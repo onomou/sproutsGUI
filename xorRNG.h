@@ -9,3 +9,9 @@ inline unsigned long XORshiftRNG()
 	z = w;
 	return (w = (w^(w>>19))^(t^(t>>8)));
 }
+
+/* returns a random number in [0,n) */
+inline int random( int n )
+{
+	return XORshiftRNG() % n;
+}

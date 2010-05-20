@@ -1,0 +1,23 @@
+Circuit scan region
+
+Leftmost point = x0
+Rightmost point = x1
+Highest point = y0
+Lowest point = y1
+
+For x from x0 to x1 step
+	Draw line from (x,y0) to (x,y1)
+		If intersects current curve (or another curve bounding the region)
+			Flip state
+		If state is active (inside the region)
+			If intersects another node (node then inside region)
+				Add node to list (find associated graph)
+
+Find region boundary (right-hand rule)
+Start at a point
+Pick a direction
+	Get incident vectors of point (for Bezier, vector from endpoint to its control point)
+	Compute angle between each incident vector and the chosen direction (try dot product : (v dot u)/(norm(v)norm(u)) = cos t)
+	Pick smallest angle left of incident vector
+	Choose the line that has that angle scalar vector control point (please, for pity's sake, revise this sentence)
+	Do it all again until returning to start point

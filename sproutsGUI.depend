@@ -1,10 +1,9 @@
 # depslib dependency file v1.0
-1274251960 source:c:\users\steven\code\sproutsgui\main.cpp
-	<cstdio>
+1274344557 source:c:\users\steven\code\sproutsgui\main.cpp
+	<cstdlib>
 	<iostream>
-	<SDL\SDL.h>
-	<SDL\SDL_gfxPrimitives.h>
-	"xorRNG.h"
+	<SDL/SDL.h>
+	<SDL/SDL_gfxPrimitives.h>
 	"bezier.h"
 
 1255800449 c:\users\steven\code\sproutsgui\sdl\include\sdl\sdl.h
@@ -191,7 +190,13 @@
 	<math.h>
 	"SDL.h"
 
-1274251920 c:\users\steven\code\sproutsgui\bezier.h
+1274344845 c:\users\steven\code\sproutsgui\bezier.h
+	<vector>
+	<cmath>
+	"xorRNG.h"
+	"draw.h"
 
-1274250738 c:\users\steven\code\sproutsgui\xorrng.h
+1274295442 c:\users\steven\code\sproutsgui\xorrng.h
+
+1274343216 c:\users\steven\code\sproutsgui\draw.h
 

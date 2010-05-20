@@ -5,12 +5,12 @@
 		<Cursor position="0" topLine="0" />
 	</File>
 	<File name="bezier.h" open="1" top="0" tabpos="4">
-		<Cursor position="51" topLine="0" />
+		<Cursor position="1051" topLine="27" />
 	</File>
 	<File name="main.cpp" open="1" top="1" tabpos="1">
-		<Cursor position="1622" topLine="25" />
+		<Cursor position="3766" topLine="87" />
 	</File>
 	<File name="xorRNG.h" open="1" top="0" tabpos="3">
-		<Cursor position="282" topLine="0" />
+		<Cursor position="386" topLine="0" />
 	</File>
 </CodeBlocks_layout_file>
