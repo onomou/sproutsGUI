@@ -11,7 +11,7 @@ int main( int argc, char* argv[] )
 {
 	/* Variables */
 	bool gameRunning = true, clicked = false;
-	int downMouseX, downMouseY;
+	int xMouse, yMouse, downX, downY;
 	int lineIndex, pointIndex;
 	SDL_Event event;			// dump event polls into this
 
@@ -38,9 +38,10 @@ int main( int argc, char* argv[] )
 	SDL_WM_SetIcon( icon, NULL );
 	SDL_FreeSurface( icon );
     SDL_WM_SetCaption( "SDL sandbox application", "Minimized" );
-	
+
 	/* Game loop */
 	Bezier curves(screen);
+	curves.drawLines();
 	while( gameRunning )
 	{
 		while( SDL_PollEvent(&event) )
@@ -54,32 +55,56 @@ int main( int argc, char* argv[] )
 				case SDL_KEYUP:				// keyboard released
 					if( event.key.keysym.sym == SDLK_ESCAPE )
 						gameRunning = false;
+					else if( event.key.keysym.sym == SDLK_RETURN )
+					{
+						curves.addLine(1);
+					}
 					break;
 				case SDL_MOUSEBUTTONDOWN:	// mouse pressed
-					downMouseX = event.button.x;	// get mouse click location
-					downMouseY = event.button.y;	//
+					if( event.button.button == SDL_BUTTON_LEFT )
+					{
+						downX = event.button.x;	// get mouse click location
+						downY = event.button.y;	//
+						if( !curves.active )	// not in point-moving mode
+						{
+							if( curves.select( downX, downY ) )	// try to get a point (select if under mouse pointer)
+							{
+								curves.active = true;
+								curves.move( downX, downY );
+								curves.drawLines();
+								// SDL_LockSurface( screen );
+									// circleRGBA( screen, downX, downY, 5, 255,255,255,255 );
+								// SDL_UnlockSurface( screen );
+								// SDL_Flip( screen );
+							}
+						}
+						else	// already moving a point
+						{
+							curves.active = false;		// get out of point-moving mode
+						}
+					}
+					else if( event.button.button == SDL_BUTTON_RIGHT )
+					{
+						curves.addLine();
+						curves.drawLines();
+					}
 					break;
 				case SDL_MOUSEBUTTONUP:		// mouse released
 					if( event.button.button == SDL_BUTTON_LEFT )
 					{
-						curves.addLine();
-						if( curves.select( downMouseX, downMouseY ) )
-							circleRGBA( screen, downMouseX, downMouseY, 5, 255,255,255,255 );
-						if( clicked )	// dragging a point
+						if( (event.button.x - downX)*(event.button.x - downX) + (event.button.y - downY)*(event.button.y - downY) > 16 )	// mouse moved more than 4 pixels before unclicking
 						{
+							curves.active = false;
 						}
-						else
-							clicked = !clicked;		// toggle mouse state
-					}
-					else if( event.button.button == SDL_BUTTON_RIGHT )
-					{
-						curves.drawLines();
 					}
 					break;
 				case SDL_MOUSEMOTION:		// mouse moved
-					if( clicked )	// dragging a point
+					if( curves.active )		// moving a point
 					{
-//						curves.getClosest( event.motion.x, event.motion.y, lineIndex, pointIndex );
+						xMouse = event.button.x;	// get mouse click location
+						yMouse = event.button.y;	//
+						curves.move( xMouse, yMouse );
+						curves.drawLines();
 					}
 					else
 					{

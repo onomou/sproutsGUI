@@ -1,5 +1,5 @@
 # depslib dependency file v1.0
-1274344557 source:c:\users\steven\code\sproutsgui\main.cpp
+1274435017 source:c:\users\steven\code\sproutsgui\main.cpp
 	<cstdlib>
 	<iostream>
 	<SDL/SDL.h>
@@ -190,7 +190,7 @@
 	<math.h>
 	"SDL.h"
 
-1274344845 c:\users\steven\code\sproutsgui\bezier.h
+1274435398 c:\users\steven\code\sproutsgui\bezier.h
 	<vector>
 	<cmath>
 	"xorRNG.h"
