@@ -70,6 +70,7 @@ int main( int argc, char* argv[] )
 					else if( event.key.keysym.sym == SDLK_SPACE )
 					{
 						curves.splitLine();
+						curves.drawLines();
 					}
 					break;
 				case SDL_MOUSEBUTTONDOWN:	// mouse pressed
@@ -122,6 +123,7 @@ int main( int argc, char* argv[] )
 						{
 							curves.connect(event.button.x, event.button.y);
 							curves.active = false;
+							curves.drawLines();
 						}
 						else
 						{	// this next thing probably has some bugs if the user clicks with the left button, drags then clicks and relases the right button
@@ -146,13 +148,14 @@ int main( int argc, char* argv[] )
 				case SDL_MOUSEMOTION:		// mouse moved
 					if( curves.active )		// moving a point
 					{
-						xMouse = event.button.x;	// get mouse click location
-						yMouse = event.button.y;	//
+						xMouse = event.motion.x;	// get mouse click location
+						yMouse = event.motion.y;	//
 						curves.move( xMouse, yMouse );
 						curves.drawLines();
 					}
 					else
 					{
+						curves.highlightNear( event.motion.x, event.motion.y );
 					}
 					break;
 				case SDL_QUIT:				// top-right X clicked

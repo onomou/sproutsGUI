@@ -19,6 +19,8 @@ class Bezier
 		SDL_Surface *surface;	// screen to draw onto
 		SDL_Surface *picking;
 
+		int radiusGlobal;
+		int radiusRadius;
 		struct pointsLines
 		{
 			int aLine, aPoint, dist;
@@ -33,7 +35,7 @@ class Bezier
 		bool select(int,int,int,int);	// accepts x,y and oldLine,oldPoint to skip an already found point
 		void move(int,int);
 		double distLine(int,int,int,int);
-		void drawLines(Uint32=0xFFFFFFFF);	// blank surface, then draw all lines in the structure - default color is white
+		void drawLines(Uint32=0xFFFFFFFF,bool=true);	// blank surface, then draw all lines in the structure - default color is white, default mode is lock/unlock/flip surface
 		void drawLine(bLine);	// blank surface, then draw only given line
 		bool active;			// true if moving a point
 		bool connect(int,int);	// connects the point at (x,y) to an existing point (if near enough)
@@ -42,6 +44,8 @@ class Bezier
 		void splitLine(bLine,int,int);
 
 		double dist(int,int,int,int);	// return distance between (x,y) and (x1,y1)
+
+		void highlightNear(int,int);	// highlights a node if input near enough to select it
 };
 Bezier::Bezier(SDL_Surface *sf)
 {
@@ -67,6 +71,8 @@ Bezier::Bezier(SDL_Surface *sf)
 	/* Set colors */
 	r = g = b = a = 255;
 
+	radiusGlobal = 15;
+	radiusRadius = radiusGlobal*radiusGlobal;
 	active = false;		// not moving a point initially
 }
 void Bezier::addLine(void)
@@ -193,7 +199,7 @@ void Bezier::addLine(int ax, int ay, int bx, int by, int cx, int cy, int dx, int
 // http://www.libsdl.org/intro.en/usingvideo.html
 bool Bezier::select(int x, int y, bool adding)
 {
-	int radiusRadius = 64, d;	// square of radius
+	int d;	// square of radius
 	pointsLines closestLine = { -1, -1, radiusRadius };
 	//int xx = x * x, yy = y * y;		// squares of components
 	for( int lineIterator = 0; lineIterator < allLines.size(); lineIterator++ )
@@ -239,7 +245,7 @@ bool Bezier::select(int x, int y, bool adding)
 /* This select function will select a point provided it is not the given point */
 bool Bezier::select(int x, int y, int givenLine, int givenPoint)
 {
-	int radiusRadius = 64, d;	// square of radius
+	int d;	// (square of radius)
 	pointsLines closestLine = { -1, -1, radiusRadius };
 	//int xx = x * x, yy = y * y;		// squares of components
 	for( int lineIterator = 0; lineIterator < allLines.size(); lineIterator++ )
@@ -282,13 +288,14 @@ double Bezier::distLine(int x, int y, int lineIndex, int pointIndex)
 {
 	return sqrt( (x-*allLines[lineIndex].xPoints[pointIndex])*(x-*allLines[lineIndex].xPoints[pointIndex]) + (y-*allLines[lineIndex].yPoints[pointIndex])*(y-*allLines[lineIndex].yPoints[pointIndex]) );
 }
-void Bezier::drawLines(Uint32 color)
+void Bezier::drawLines(Uint32 color, bool redraw)
 {
 	int xNew, yNew, xOld, yOld;
 	int curvePoints = 20;
 	double step = 1.0/curvePoints;
 
-	SDL_LockSurface( surface );
+	if( redraw )
+		SDL_LockSurface( surface );
 	SDL_FillRect( surface, NULL, 0 );	// clear surface to black
 	for( int lineIterator = 0; lineIterator < allLines.size(); lineIterator++ )
 	{
@@ -298,7 +305,7 @@ void Bezier::drawLines(Uint32 color)
 			// filledCircleRGBA( picking, *allLines[lineIterator].xPoints[i], *allLines[lineIterator].yPoints[i], 7, 255,255,lineIterator,255 );
 			/* Draw control point circles */
 			// circleRGBA( surface, *allLines[lineIterator].xPoints[i], *allLines[lineIterator].yPoints[i], 5, 255,255,255,255 );
-			circleColor( surface, *allLines[lineIterator].xPoints[i], *allLines[lineIterator].yPoints[i], 5, color - 0xF );
+			circleColor( surface, *allLines[lineIterator].xPoints[i], *allLines[lineIterator].yPoints[i], 5, color - 0x8F );
 		}
 
 		lineRGBA( surface, *allLines[lineIterator].xPoints[0], *allLines[lineIterator].yPoints[0], *allLines[lineIterator].xPoints[1], *allLines[lineIterator].yPoints[1], 128,128,128,100 );
@@ -323,10 +330,14 @@ void Bezier::drawLines(Uint32 color)
 			xOld = xNew;
 			yOld = yNew;
 		}
-
+		if( active )	// dragging a point - highlight that point
+			circleRGBA( surface, *allLines[activeLine].xPoints[allLines[activeLine].activePoint], *allLines[activeLine].yPoints[allLines[activeLine].activePoint], 5, 255,0,255,255 );
 	}
-	SDL_UnlockSurface( surface );
-	SDL_Flip( surface );
+	if( redraw )
+	{
+		SDL_UnlockSurface( surface );
+		SDL_Flip( surface );
+	}
 }
 bool Bezier::disconnect(int x, int y)
 {
@@ -369,6 +380,7 @@ bool Bezier::connect(int x, int y)
 	else
 		return false;
 }
+/* TODO: Implement recursive subdivision to smooth out line sufficiently */
 void Bezier::drawLine(bLine bl)
 {
 	int xNew, yNew, xOld, yOld;
@@ -404,7 +416,7 @@ void Bezier::drawLine(bLine bl)
 
 			// circleRGBA( surface, xNew, yNew, 5, r,g,b,a/3 );
 			// lineColor( surface, xNew, yNew, xOld, yOld, 0xFFFFFFFF );
-			lineRGBA( surface, xNew, yNew, xOld, yOld, 128,128,128,255 );
+			lineRGBA( surface, xNew, yNew, xOld, yOld, 255,255,255,255 );
 			// circleRGBA( surface, xNew, yNew, 3, 255,255,255,255 );
 
 			xOld = xNew;
@@ -418,7 +430,7 @@ void Bezier::drawLine(bLine bl)
 bool Bezier::splitLine(void)
 {
 	int selectedPoints = 0, firstLine, firstPoint, secondLine, secondPoint;
-	int oldPoint, oldLine, xMouse, yMouse;
+	int oldPoint, oldLine, xMouse, yMouse, searchBounds = 3;
 	bool run = true, selected = false;
 	bLine bl;
 	SDL_Event event;
@@ -446,8 +458,6 @@ bool Bezier::splitLine(void)
 							drawLine( bl );
 							allLines.erase(allLines.begin() + activeLine);	// remove line to be split (it is now in bl)
 							run = false;
-							
-							std::cout << "Check\n";
 						}
 						break;
 					}
@@ -475,15 +485,14 @@ bool Bezier::splitLine(void)
 				case SDL_MOUSEBUTTONDOWN:
 					if( event.button.button == SDL_BUTTON_LEFT )
 					{
-						for( int i = -2; i <= 2; i++ )
+						for( int i = -searchBounds; i <= searchBounds; i++ )
 						{
-							for( int j = -2; j <= 2; j++ )
+							for( int j = -searchBounds; j <= searchBounds; j++ )
 							{
-								if( (i-j)*(i-j) > 2*2 )	// exclude edges of i X j square not in a circle (huh?)
+								if( (i-j)*(i-j) > searchBounds*searchBounds )	// exclude edges of i X j square not in a circle (huh?)
 									continue;
-								if( getpixel( surface, event.button.x + i, event.button.y + j ) == SDL_MapRGBA(surface->format, 255,255,255,255) )
+								if( getpixel( surface, event.button.x + i, event.button.y + j ) == SDL_MapRGBA(surface->format, 255,255,255,255) )	// found white pixel (curve point probably)
 								{
-									std::cout << "Found white pixel\n";
 									splitLine( bl, event.button.x + i, event.button.y + j );
 									drawLines();
 									return true;
@@ -491,12 +500,12 @@ bool Bezier::splitLine(void)
 					}	}	}		// what about this notation for ending a set of brackets? heh heh...
 					break;
 				case SDL_MOUSEBUTTONUP:
-					if( event.button.button == SDL_BUTTON_RIGHT )
-						return false;
-					break;
 				case SDL_KEYUP:
-					if( event.key.keysym.sym == SDLK_ESCAPE )
+					if( event.button.button == SDL_BUTTON_RIGHT || event.key.keysym.sym == SDLK_ESCAPE )
+					{
+						allLines.push_back( bl );
 						return false;
+					}
 					break;
 				case SDL_QUIT:
 					return false;
@@ -509,6 +518,7 @@ void Bezier::splitLine( bLine bl, int x, int y )
 {
 	int xNew, yNew;
 	int curvePoints = 20;
+	double smallestDistance = dist( x,y, *bl.xPoints[0],*bl.yPoints[0] ), smallestT;
 	double step = 1.0/curvePoints;
 	bLine first, second;
 	for( int i = 0; i < 4; i++ )
@@ -519,46 +529,78 @@ void Bezier::splitLine( bLine bl, int x, int y )
 		second.yPoints[i] = new int;
 	}
 	first.activePoint = second.activePoint = 0;
-	// this now needs to be able to home in on a specific point
+	// find t value at which distance to target is minimum
 	for( double t = 0; t <= 1; t += step )
 	{
 		xNew = t*t*t*( *bl.xPoints[3] - *bl.xPoints[0] + 3*( *bl.xPoints[1] - *bl.xPoints[2] ) ) + 3*t*t*( *bl.xPoints[0] - 2**bl.xPoints[1] + *bl.xPoints[2] ) - 3*t*( *bl.xPoints[0] - *bl.xPoints[1] ) + ( *bl.xPoints[0] );
 		yNew = t*t*t*( *bl.yPoints[3] - *bl.yPoints[0] + 3*( *bl.yPoints[1] - *bl.yPoints[2] ) ) + 3*t*t*( *bl.yPoints[0] - 2**bl.yPoints[1] + *bl.yPoints[2] ) - 3*t*( *bl.yPoints[0] - *bl.yPoints[1] ) + ( *bl.yPoints[0] );
-		
-		if( dist(x,y,xNew,yNew) <= 2*2 )	// distance from given (x,y) to curve (x,y) is within 2 pixels
+
+		if( dist(x,y,xNew,yNew) < smallestDistance )	// distance from given (x,y) to curve (x,y) is within 2 pixels
 		{
-			std::cout << "Splitting curve\n";
-			// now split the curve
-			 *first.xPoints[0] = *bl.xPoints[0];
-			 *first.xPoints[1] = (1-t)* *bl.xPoints[0]+t* *bl.xPoints[1];
-			 *first.xPoints[2] = (1-t)*((1-t)* *bl.xPoints[0]+t* *bl.xPoints[1])+t*((1-t)* *bl.xPoints[1]+t* *bl.xPoints[2]);
-			 *first.xPoints[3] = (1-t)*((1-t)*((1-t)* *bl.xPoints[0]+t* *bl.xPoints[1])+t*((1-t)* *bl.xPoints[1]+t* *bl.xPoints[2]))+t*((1-t)*((1-t)* *bl.xPoints[1]+t* *bl.xPoints[2])+t*((1-t)* *bl.xPoints[2]+t* *bl.xPoints[3]));
-			 *first.yPoints[0] = *bl.yPoints[0];
-			 *first.yPoints[1] = (1-t)* *bl.yPoints[0]+t* *bl.yPoints[1];
-			 *first.yPoints[2] = (1-t)*((1-t)* *bl.yPoints[0]+t* *bl.yPoints[1])+t*((1-t)* *bl.yPoints[1]+t* *bl.yPoints[2]);
-			 *first.yPoints[3] = (1-t)*((1-t)*((1-t)* *bl.yPoints[0]+t* *bl.yPoints[1])+t*((1-t)* *bl.yPoints[1]+t* *bl.yPoints[2]))+t*((1-t)*((1-t)* *bl.yPoints[1]+t* *bl.yPoints[2])+t*((1-t)* *bl.yPoints[2]+t* *bl.yPoints[3]));
-			 
-			 second.xPoints[0] = first.xPoints[3];	// connect midpoint
-			 second.yPoints[0] = first.yPoints[3];	// 
-			 
-			// *second.xPoints[0] = (1-t)*((1-t)*((1-t)* *bl.xPoints[0]+t* *bl.xPoints[1])+t*((1-t)* *bl.xPoints[1]+t* *bl.xPoints[2]))+t*((1-t)*((1-t)* *bl.xPoints[1]+t* *bl.xPoints[2])+t*((1-t)* *bl.xPoints[2]+t* *bl.xPoints[3]));
-			*second.xPoints[1] = (1-t)*((1-t)* *bl.xPoints[1]+t* *bl.xPoints[2])+t*((1-t)* *bl.xPoints[2]+t* *bl.xPoints[3]);
-			*second.xPoints[2] = (1-t)* *bl.xPoints[2]+t* *bl.xPoints[3];
-			*second.xPoints[3] = *bl.xPoints[3];
-			// *second.yPoints[0] = (1-t)*((1-t)*((1-t)* *bl.yPoints[0]+t* *bl.yPoints[1])+t*((1-t)* *bl.yPoints[1]+t* *bl.yPoints[2]))+t*((1-t)*((1-t)* *bl.yPoints[1]+t* *bl.yPoints[2])+t*((1-t)* *bl.yPoints[2]+t* *bl.yPoints[3]));
-			*second.yPoints[1] = (1-t)*((1-t)* *bl.yPoints[1]+t* *bl.yPoints[2])+t*((1-t)* *bl.yPoints[2]+t* *bl.yPoints[3]);
-			*second.yPoints[2] = (1-t)* *bl.yPoints[2]+t* *bl.yPoints[3];
-			*second.yPoints[3] = *bl.yPoints[3];
-			allLines.push_back( first );
-			allLines.push_back( second );
-			break;
+			smallestDistance = dist( x,y, xNew,yNew );
+			smallestT = t;
 		}
 	}
-	std::cout << "Ended search\n";
+	// now split the curve
+	 *first.xPoints[0] = *bl.xPoints[0];
+	 *first.xPoints[1] = (1-smallestT)* *bl.xPoints[0]+smallestT* *bl.xPoints[1];
+	 *first.xPoints[2] = (1-smallestT)*((1-smallestT)* *bl.xPoints[0]+smallestT* *bl.xPoints[1])+smallestT*((1-smallestT)* *bl.xPoints[1]+smallestT* *bl.xPoints[2]);
+	 *first.xPoints[3] = (1-smallestT)*((1-smallestT)*((1-smallestT)* *bl.xPoints[0]+smallestT* *bl.xPoints[1])+smallestT*((1-smallestT)* *bl.xPoints[1]+smallestT* *bl.xPoints[2]))+smallestT*((1-smallestT)*((1-smallestT)* *bl.xPoints[1]+smallestT* *bl.xPoints[2])+smallestT*((1-smallestT)* *bl.xPoints[2]+smallestT* *bl.xPoints[3]));
+	 *first.yPoints[0] = *bl.yPoints[0];
+	 *first.yPoints[1] = (1-smallestT)* *bl.yPoints[0]+smallestT* *bl.yPoints[1];
+	 *first.yPoints[2] = (1-smallestT)*((1-smallestT)* *bl.yPoints[0]+smallestT* *bl.yPoints[1])+smallestT*((1-smallestT)* *bl.yPoints[1]+smallestT* *bl.yPoints[2]);
+	 *first.yPoints[3] = (1-smallestT)*((1-smallestT)*((1-smallestT)* *bl.yPoints[0]+smallestT* *bl.yPoints[1])+smallestT*((1-smallestT)* *bl.yPoints[1]+smallestT* *bl.yPoints[2]))+smallestT*((1-smallestT)*((1-smallestT)* *bl.yPoints[1]+smallestT* *bl.yPoints[2])+smallestT*((1-smallestT)* *bl.yPoints[2]+smallestT* *bl.yPoints[3]));
+
+	 second.xPoints[0] = first.xPoints[3];	// connect midpoint
+	 second.yPoints[0] = first.yPoints[3];	//
+
+	*second.xPoints[1] = (1-smallestT)*((1-smallestT)* *bl.xPoints[1]+smallestT* *bl.xPoints[2])+smallestT*((1-smallestT)* *bl.xPoints[2]+smallestT* *bl.xPoints[3]);
+	*second.xPoints[2] = (1-smallestT)* *bl.xPoints[2]+smallestT* *bl.xPoints[3];
+	*second.xPoints[3] = *bl.xPoints[3];
+	*second.yPoints[1] = (1-smallestT)*((1-smallestT)* *bl.yPoints[1]+smallestT* *bl.yPoints[2])+smallestT*((1-smallestT)* *bl.yPoints[2]+smallestT* *bl.yPoints[3]);
+	*second.yPoints[2] = (1-smallestT)* *bl.yPoints[2]+smallestT* *bl.yPoints[3];
+	*second.yPoints[3] = *bl.yPoints[3];
+	allLines.push_back( first );
+	allLines.push_back( second );
 }
 inline double Bezier::dist(int x0, int y0, int x1, int y1)
 {
 	return (sqrt((x1-x0)*(x1-x0) + (y1-y0)*(y1-y0)));
+}
+void Bezier::highlightNear(int x, int y)
+{
+	int d;
+	pointsLines closestLine = { -1, -1, radiusRadius };
+
+	// perhaps check a radius around the cursor to see if there are even any nodes there? ...
+	// for( int i = -radiusGlobal; i <= radiusGlobal; i++ )
+	// {
+		// for( int j = -radiusGlobal; j <= radiusGlobal; j++ )
+		// {
+			// if(
+	SDL_LockSurface( surface );
+	drawLines(0xFFFFFFFF, false);
+	for( int lineIterator = 0; lineIterator < allLines.size(); lineIterator++ )		// check each line
+	{
+		for( int i = 0; i < 4; i++ )	// check each point
+		{
+			d = (*allLines[lineIterator].xPoints[i] - x) * (*allLines[lineIterator].xPoints[i] - x) + (*allLines[lineIterator].yPoints[i] - y) * (*allLines[lineIterator].yPoints[i] - y);
+			if( d <= closestLine.dist )
+			{
+                closestLine.aLine = lineIterator;
+				closestLine.aPoint = i;
+				closestLine.dist = d;
+			}
+		}
+	}
+	if( closestLine.aLine == -1 )
+		;
+	else		// find nearest point from (x,y)
+	{
+		circleRGBA( surface, *allLines[closestLine.aLine].xPoints[closestLine.aPoint], *allLines[closestLine.aLine].yPoints[closestLine.aPoint], 5, 255,0,255,255 );
+	}
+	SDL_UnlockSurface( surface );
+	SDL_Flip( surface );
 }
 /*
 Using de Casteljau's algorithm
@@ -587,6 +629,11 @@ Steps for getting the two new curves:
 	Create the two new curves for that value of t
 
 No more recursion for quadratic Bezier curves!
+
+From split function above (reinstate this if the split point should not be linked to both new curves)
+	*second.xPoints[0] = (1-t)*((1-t)*((1-t)* *bl.xPoints[0]+t* *bl.xPoints[1])+t*((1-t)* *bl.xPoints[1]+t* *bl.xPoints[2]))+t*((1-t)*((1-t)* *bl.xPoints[1]+t* *bl.xPoints[2])+t*((1-t)* *bl.xPoints[2]+t* *bl.xPoints[3]));
+	*second.yPoints[0] = (1-t)*((1-t)*((1-t)* *bl.yPoints[0]+t* *bl.yPoints[1])+t*((1-t)* *bl.yPoints[1]+t* *bl.yPoints[2]))+t*((1-t)*((1-t)* *bl.yPoints[1]+t* *bl.yPoints[2])+t*((1-t)* *bl.yPoints[2]+t* *bl.yPoints[3]));
+
 
 Mike
  34-35 sleeve
