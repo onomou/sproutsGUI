@@ -11,7 +11,7 @@ int main( int argc, char* argv[] )
 {
 	/* Variables */
 	bool gameRunning = true, clicked = false;
-	int xMouse, yMouse, downX, downY;
+	int xMouse, yMouse, downX, downY, downRtX, downRtY;
 	int lineIndex, pointIndex;
 	SDL_Event event;			// dump event polls into this
 
@@ -28,7 +28,8 @@ int main( int argc, char* argv[] )
 	const SDL_VideoInfo* myPointer = SDL_GetVideoInfo();	// get current display information (for height, width, color depth, etc.)
 	// set new window to half current screen size, as a hardware surface, enable double buffering[, without a frame]
 	SDL_Surface *screen = SDL_SetVideoMode( myPointer->current_w/2, myPointer->current_h/2, 0, SDL_HWSURFACE|SDL_DOUBLEBUF );		/* End SDL initialization */
-
+	// SDL_Surface *button = SDL_CreateRGBSurface( SDL_HWSURFACE|SDL_SRCALPHA, 
+	
 	/* Set window icon and title */
 	Uint32 colorkey;
 	SDL_Surface *icon;
@@ -38,10 +39,17 @@ int main( int argc, char* argv[] )
 	SDL_WM_SetIcon( icon, NULL );
 	SDL_FreeSurface( icon );
     SDL_WM_SetCaption( "SDL sandbox application", "Minimized" );
+	
+	/* Load a button */
+	SDL_Surface *button;
+	button = SDL_LoadBMP("button.bmp");
+	
 
 	/* Game loop */
 	Bezier curves(screen);
 	curves.drawLines();
+	SDL_BlitSurface( button, NULL, screen, NULL );
+	SDL_Flip( screen );
 	while( gameRunning )
 	{
 		while( SDL_PollEvent(&event) )
@@ -59,6 +67,10 @@ int main( int argc, char* argv[] )
 					{
 						curves.addLine(1);
 					}
+					else if( event.key.keysym.sym == SDLK_SPACE )
+					{
+						curves.splitLine();
+					}
 					break;
 				case SDL_MOUSEBUTTONDOWN:	// mouse pressed
 					if( event.button.button == SDL_BUTTON_LEFT )
@@ -67,7 +79,7 @@ int main( int argc, char* argv[] )
 						downY = event.button.y;	//
 						if( !curves.active )	// not in point-moving mode
 						{
-							if( curves.select( downX, downY ) )	// try to get a point (select if under mouse pointer)
+							if( curves.select( downX, downY, false ) )	// try to get a point (select if under mouse pointer)
 							{
 								curves.active = true;
 								curves.move( downX, downY );
@@ -85,17 +97,50 @@ int main( int argc, char* argv[] )
 					}
 					else if( event.button.button == SDL_BUTTON_RIGHT )
 					{
-						curves.addLine();
-						curves.drawLines();
+						downRtX = event.button.x;
+						downRtY = event.button.y;
+						// if( curves.disconnect( event.button.x, event.button.y ) )
+							// ;
+						// else
+						// {
+							// curves.addLine();
+							// curves.drawLines();
+						// }	
 					}
 					break;
 				case SDL_MOUSEBUTTONUP:		// mouse released
 					if( event.button.button == SDL_BUTTON_LEFT )
 					{
-						if( (event.button.x - downX)*(event.button.x - downX) + (event.button.y - downY)*(event.button.y - downY) > 16 )	// mouse moved more than 4 pixels before unclicking
+						if( (event.button.x - downX)*(event.button.x - downX) + (event.button.y - downY)*(event.button.y - downY) > 25 )	// mouse moved more than 5 pixels before unclicking
 						{
 							curves.active = false;
 						}
+					}
+					else if( event.button.button == SDL_BUTTON_RIGHT )
+					{
+						if( curves.active )		// moving a point - try to snap to an existing point
+						{
+							curves.connect(event.button.x, event.button.y);
+							curves.active = false;
+						}
+						else
+						{	// this next thing probably has some bugs if the user clicks with the left button, drags then clicks and relases the right button
+							if( (event.button.x - downRtX)*(event.button.x - downRtX) + (event.button.y - downRtY)*(event.button.y - downRtY) > 25 )	// mouse moved more than 5 pixels before unclicking
+							{
+								if( curves.select( downRtX, downRtY, false ) )		// try to select a point near the down mouse location
+								{
+									if( curves.disconnect( downRtX, downRtY ) )		// disconnect that point
+									{
+										curves.active = true;
+										curves.move( event.button.x, event.button.y );		// move the disconnected point to the new mouse location
+										curves.active = false;
+									}
+								}
+							}
+							else
+								curves.addLine();
+							curves.drawLines();
+						}	
 					}
 					break;
 				case SDL_MOUSEMOTION:		// mouse moved

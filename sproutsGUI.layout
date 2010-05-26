@@ -4,11 +4,11 @@
 	<File name="SDLinit.h" open="1" top="0" tabpos="2">
 		<Cursor position="0" topLine="0" />
 	</File>
-	<File name="bezier.h" open="1" top="0" tabpos="4">
-		<Cursor position="3023" topLine="98" />
+	<File name="bezier.h" open="1" top="1" tabpos="4">
+		<Cursor position="15921" topLine="403" />
 	</File>
-	<File name="main.cpp" open="1" top="1" tabpos="1">
-		<Cursor position="2401" topLine="55" />
+	<File name="main.cpp" open="1" top="0" tabpos="1">
+		<Cursor position="4324" topLine="96" />
 	</File>
 	<File name="xorRNG.h" open="1" top="0" tabpos="3">
 		<Cursor position="386" topLine="0" />
