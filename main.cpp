@@ -46,10 +46,10 @@ int main( int argc, char* argv[] )
 	
 
 	/* Game loop */
-	Bezier curves(screen);
+	Bezier curves(screen);	// create new Bezier curve object on the current screen
 	curves.drawLines();
-	SDL_BlitSurface( button, NULL, screen, NULL );
-	SDL_Flip( screen );
+	// SDL_BlitSurface( button, NULL, screen, NULL );
+	// SDL_Flip( screen );
 	while( gameRunning )
 	{
 		while( SDL_PollEvent(&event) )
@@ -65,7 +65,7 @@ int main( int argc, char* argv[] )
 						gameRunning = false;
 					else if( event.key.keysym.sym == SDLK_RETURN )
 					{
-						curves.addLine(1);
+						curves.addLine();
 					}
 					else if( event.key.keysym.sym == SDLK_SPACE )
 					{
@@ -140,7 +140,7 @@ int main( int argc, char* argv[] )
 								}
 							}
 							else
-								curves.addLine();
+								curves.addLine(true);	// add a new random line
 							curves.drawLines();
 						}	
 					}

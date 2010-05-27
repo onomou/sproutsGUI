@@ -1,200 +1,208 @@
 #include <algorithm>
+#include <ctime>
 #include <vector>
 #include <cmath>
 #include "xorRNG.h"
 #include "draw.h"
 
+
 class Bezier
 {
 	private:
+		/* Global constants for this class  */
+		static const int r = 255,
+						 g = 255,
+						 b = 255,
+						 a = 255;
+		static const int curvePoints = 40;
+		static const int radiusGlobal = 15;
+		static const int radiusRadius = 225;
+		/* End constants */
+		
+		struct pointsLines					// for associating an active line, point pair and its distance from some other point
+		{ int aLine, aPoint, dist; };
+		
 		struct bLine
 		{
-			int *xPoints[4];	// array of 4 pointers to integers
-			int *yPoints[4];	//   "...
+			int *xPoints[4];				// array of 4 pointers to integers
+			int *yPoints[4];				// 
 			int activePoint;
 		};
 		std::vector<bLine> allLines;
 		int activeLine;
-		int r,g,b,a;
-		SDL_Surface *surface;	// screen to draw onto
-		SDL_Surface *picking;
-
-		int radiusGlobal;
-		int radiusRadius;
-		struct pointsLines
-		{
-			int aLine, aPoint, dist;
-		};
-		bool sortPL(pointsLines,pointsLines);
+		
+		SDL_Surface *surface;				// screen to draw onto
+		SDL_Surface *picking;	// may be used for selecting nodes at some point (if checking all distances becomes too slow) : NOT USED CURRENTLY
+		
+		/* Private functions */
+		double dist(int,int,int,int);		// return distance between (x,y) and (x1,y1)
+		double distLine(int,int,int,int);	// return distance between (x,y) and (lineIndex,pointIndex)
+		
 	public:
-		Bezier(SDL_Surface*);
-		void addLine(void);		// randomly generate a line
-		void addLine(int);		// make new line with user input
-		void addLine(int,int,int,int,int,int,int,int);
-		bool select(int,int,bool);	// accepts x,y : if close to a point, set that point active
+		/* Public variables */
+		bool active;					// true if moving a point
+		
+		/* Constructors */
+		Bezier(SDL_Surface*);			// default constructor
+		
+		/* Curve generation */
+		void addLine(bool=false);		// make new line with user input, or random point positions if bool is true
+		
+		/* Curve selection */
+		void highlightNear(int,int);	// highlights a node if input near enough to select it
+		bool select(int,int,bool);		// accepts x,y : if close to a point, set that point active
 		bool select(int,int,int,int);	// accepts x,y and oldLine,oldPoint to skip an already found point
-		void move(int,int);
-		double distLine(int,int,int,int);
-		void drawLines(Uint32=0xFFFFFFFF,bool=true);	// blank surface, then draw all lines in the structure - default color is white, default mode is lock/unlock/flip surface
-		void drawLine(bLine);	// blank surface, then draw only given line
-		bool active;			// true if moving a point
-		bool connect(int,int);	// connects the point at (x,y) to an existing point (if near enough)
-		bool disconnect(int,int);	// disconnect points near (x,y) (if near enough)
-		bool splitLine(void);	// accepts input (endpoint,endpoint) and spot on curve to split it into two
+		
+		/* Curve operations */
+		void move(int,int);				// move active point to (x,y)
+		bool connect(int,int);			// connects the point at (x,y) to an existing point (if near enough)
+		bool disconnect(int,int);		// disconnect points near (x,y) (if near enough - looks for near node)
+		bool splitLine(void);			// accepts input (endpoint,endpoint) and spot on curve to split it into two
 		void splitLine(bLine,int,int);
 
-		double dist(int,int,int,int);	// return distance between (x,y) and (x1,y1)
-
-		void highlightNear(int,int);	// highlights a node if input near enough to select it
+		/* Curve visualization */
+		void drawLines(Uint32=0xFFFFFFFF,bool=true);	// blank surface, then draw all lines in the structure - default color is white, pass false to not lock/unlock/flip surface
+		void drawLine(bLine);			// blank surface, then draw only given line
 };
 Bezier::Bezier(SDL_Surface *sf)
 {
+	srand( time(NULL) );
+
 	/* Set drawing surface */
 	surface = sf;
-	picking = SDL_ConvertSurface(sf, sf->format, sf->flags);	// copy current video surface
-	SDL_FillRect( picking, NULL, 0 );							// blank picking surface
+	// picking = SDL_ConvertSurface(sf, sf->format, sf->flags);	// TODO: look into using a picking layer to select nodes/find close nodes/entc - NOW: copy current video surface
+	// SDL_FillRect( picking, NULL, 0 );							// blank picking surface
 
 	/* Generate a new curve */
-	bLine tmpBezier;
-	for( int i = 0; i < 4; i++ )
-	{
-		tmpBezier.xPoints[i] = new int;
-		*tmpBezier.xPoints[i] = random(surface->w);
-		tmpBezier.yPoints[i] = new int;
-		*tmpBezier.yPoints[i] = random(surface->h);
-	}
-	tmpBezier.activePoint = 0;
-
-	allLines.push_back(tmpBezier);
-	activeLine = allLines.size() - 1;
-
-	/* Set colors */
-	r = g = b = a = 255;
-
-	radiusGlobal = 15;
-	radiusRadius = radiusGlobal*radiusGlobal;
+	addLine(true);
+	
 	active = false;		// not moving a point initially
 }
-void Bezier::addLine(void)
-{
-	bLine tmpBezier;
-	for( int i = 0; i < 4; i++ )
-	{
-		tmpBezier.xPoints[i] = new int;
-		*tmpBezier.xPoints[i] = random(surface->w);
-		tmpBezier.yPoints[i] = new int;
-		*tmpBezier.yPoints[i] = random(surface->h);
-	}
-	tmpBezier.activePoint = 0;
-
-	allLines.push_back(tmpBezier);
-	activeLine = allLines.size() - 1;
-}
-void Bezier::addLine(int junk)
+void Bezier::addLine(bool rnd)
 {
 	bool run = true;
 	int xMouse, yMouse, pointBackup;
 	bLine tmpBezier;
 	SDL_Event event;
 	SDL_PollEvent(&event);
-	for( int i = 0; i < 4; i++ )
+	if( rnd )	// TODO: Make this part flow better so it isn't completely separate from the following section 
 	{
-		tmpBezier.xPoints[i] = new int;
-		tmpBezier.yPoints[i] = new int;
-		*tmpBezier.xPoints[i] = event.button.x;		// initialize all points to current mouse location
-		*tmpBezier.yPoints[i] = event.button.y;
-	}
-	tmpBezier.activePoint = 0;
-	allLines.push_back(tmpBezier);
-	activeLine = allLines.size() - 1;
-
-	// Note to self: I have replaced allLines[activeLine] with allLines.back() since the new curve is pushed to the back of allLines - is this replacement more efficient
-	while( allLines.back().activePoint < 4 && run )
-	{
-		while( SDL_PollEvent(&event) )
+		for( int i = 0; i < 4; i++ )
 		{
-			switch( event.type )
+			 tmpBezier.xPoints[i] = new int;
+			 tmpBezier.yPoints[i] = new int;
+			*tmpBezier.xPoints[i] = random(surface->w);	// pick random points within the surface area
+			*tmpBezier.yPoints[i] = random(surface->h); // 
+		}
+		allLines.push_back(tmpBezier);
+	}
+	else
+	{
+		for( int i = 0; i < 4; i++ )
+		{
+			tmpBezier.xPoints[i] = new int;
+			tmpBezier.yPoints[i] = new int;
+			*tmpBezier.xPoints[i] = event.button.x;		// initialize all points to current mouse location
+			*tmpBezier.yPoints[i] = event.button.y;
+		}
+		tmpBezier.activePoint = 0;
+		activeLine = allLines.size();
+		allLines.push_back(tmpBezier);
+
+		// Note to self: I have replaced allLines[activeLine] with allLines.back() since the new curve is pushed to the back of allLines - is this replacement more efficient
+		while( allLines.back().activePoint < 4 && run )
+		{
+			while( SDL_PollEvent(&event) )
 			{
-				case SDL_KEYUP:				// keyboard released
-					if( event.key.keysym.sym == SDLK_ESCAPE )
-						run = false;
-					break;
-				case SDL_MOUSEBUTTONDOWN:	// mouse pressed
-					if( event.button.button == SDL_BUTTON_LEFT )
-					{
+				switch( event.type )
+				{
+					case SDL_KEYUP:				// keyboard released
+						if( event.key.keysym.sym == SDLK_ESCAPE )
+							run = false;
+						break;
+					case SDL_MOUSEBUTTONDOWN:	// mouse pressed
+						if( event.button.button == SDL_BUTTON_LEFT )
+						{
+							xMouse = event.button.x;	// get mouse click location
+							yMouse = event.button.y;	//
+
+							pointBackup = allLines.back().activePoint;		// backup active point in case select() changes it
+							if( select(xMouse,yMouse,true) )		// clicked near another node : snap to that node	(WARNING! This function will change activeLine and activePoint if it returns true)
+							{
+								allLines.back().xPoints[allLines.back().activePoint] = allLines[activeLine].xPoints[allLines[activeLine].activePoint];
+								allLines.back().yPoints[allLines.back().activePoint] = allLines[activeLine].yPoints[allLines[activeLine].activePoint];
+								activeLine = allLines.size() - 1;
+								allLines.back().activePoint = pointBackup;
+							}
+							else
+							{
+								*allLines.back().xPoints[allLines.back().activePoint] = xMouse;
+								*allLines.back().yPoints[allLines.back().activePoint] = yMouse;
+							}
+							drawLines();
+							allLines.back().activePoint++;
+						}
+						else if( event.button.button == SDL_BUTTON_RIGHT )
+						{
+							run = false;
+						}
+						break;
+					case SDL_MOUSEMOTION:		// mouse moved
 						xMouse = event.button.x;	// get mouse click location
 						yMouse = event.button.y;	//
-
-						pointBackup = allLines.back().activePoint;		// backup active point in case select() changes it
-						if( select(xMouse,yMouse,true) )		// clicked near another node : snap to that node	(WARNING! This function will change activeLine and activePoint if it returns true)
-						{
-							allLines.back().xPoints[allLines.back().activePoint] = allLines[activeLine].xPoints[allLines[activeLine].activePoint];
-							allLines.back().yPoints[allLines.back().activePoint] = allLines[activeLine].yPoints[allLines[activeLine].activePoint];
-							activeLine = allLines.size() - 1;
-							allLines.back().activePoint = pointBackup;
-						}
-						else
-						{
-							*allLines.back().xPoints[allLines.back().activePoint] = xMouse;
-							*allLines.back().yPoints[allLines.back().activePoint] = yMouse;
-						}
+						*allLines.back().xPoints[allLines.back().activePoint] = xMouse;
+						*allLines.back().yPoints[allLines.back().activePoint] = yMouse;
 						drawLines();
-						allLines.back().activePoint++;
-					}
-					else if( event.button.button == SDL_BUTTON_RIGHT )
-					{
+						break;
+					case SDL_QUIT:				// top-right X clicked
 						run = false;
-					}
-					break;
-				case SDL_MOUSEMOTION:		// mouse moved
-					xMouse = event.button.x;	// get mouse click location
-					yMouse = event.button.y;	//
-					*allLines.back().xPoints[allLines.back().activePoint] = xMouse;
-					*allLines.back().yPoints[allLines.back().activePoint] = yMouse;
-					drawLines();
-					break;
-				case SDL_QUIT:				// top-right X clicked
-					run = false;
-					break;
-				default:
-					break;
+						break;
+					default:
+						break;
+				}
+			}
+		}
+		if( !run )		// broke out unsuccessfully
+		{
+			allLines.pop_back();
+			drawLines();
+		}
+	}
+}
+void Bezier::highlightNear(int x, int y)
+{
+	int d;
+	pointsLines closestLine = { -1, -1, radiusRadius };
+
+	// perhaps check a radius around the cursor to see if there are even any nodes there? ...
+	// for( int i = -radiusGlobal; i <= radiusGlobal; i++ )
+	// {
+		// for( int j = -radiusGlobal; j <= radiusGlobal; j++ )
+		// {
+			// if(
+	SDL_LockSurface( surface );
+	drawLines(0xFFFFFFFF, false);
+	for( int lineIterator = 0; lineIterator < allLines.size(); lineIterator++ )		// check each line
+	{
+		for( int i = 0; i < 4; i++ )	// check each point
+		{
+			d = (*allLines[lineIterator].xPoints[i] - x) * (*allLines[lineIterator].xPoints[i] - x) + (*allLines[lineIterator].yPoints[i] - y) * (*allLines[lineIterator].yPoints[i] - y);
+			if( d <= closestLine.dist )
+			{
+                closestLine.aLine = lineIterator;
+				closestLine.aPoint = i;
+				closestLine.dist = d;
 			}
 		}
 	}
-	if( !run )		// broke out unsuccessfully
+	if( closestLine.aLine == -1 )
+		;
+	else		// find nearest point from (x,y)
 	{
-		allLines.pop_back();
-		drawLines();
+		circleRGBA( surface, *allLines[closestLine.aLine].xPoints[closestLine.aPoint], *allLines[closestLine.aLine].yPoints[closestLine.aPoint], 5, 255,0,255,255 );
 	}
-}
-void Bezier::addLine(int ax, int ay, int bx, int by, int cx, int cy, int dx, int dy)
-{
-	bLine tmpBezier;
-
-	tmpBezier.xPoints[1] = new int;
-	tmpBezier.xPoints[2] = new int;
-	tmpBezier.xPoints[3] = new int;
-	tmpBezier.xPoints[4] = new int;
-
-	tmpBezier.yPoints[1] = new int;
-	tmpBezier.yPoints[2] = new int;
-	tmpBezier.yPoints[3] = new int;
-	tmpBezier.yPoints[4] = new int;
-
-	*tmpBezier.xPoints[1] = ax;
-	*tmpBezier.xPoints[2] = bx;
-	*tmpBezier.xPoints[3] = cx;
-	*tmpBezier.xPoints[4] = dx;
-
-	*tmpBezier.yPoints[1] = ay;
-	*tmpBezier.yPoints[2] = by;
-	*tmpBezier.yPoints[3] = cy;
-	*tmpBezier.yPoints[4] = dy;
-
-	tmpBezier.activePoint = 0;
-
-	allLines.push_back(tmpBezier);
-	activeLine = allLines.size() - 1;
+	SDL_UnlockSurface( surface );
+	SDL_Flip( surface );
 }
 // http://www.libsdl.org/intro.en/usingvideo.html
 bool Bezier::select(int x, int y, bool adding)
@@ -272,10 +280,6 @@ bool Bezier::select(int x, int y, int givenLine, int givenPoint)
 		return true;
 	}
 }
-inline bool Bezier::sortPL(pointsLines left, pointsLines right)
-{
-	return left.dist <= right.dist;		// left goes before right (return true) otherwise (return false)
-}
 void Bezier::move(int x, int y)
 {
 	if( active )
@@ -284,61 +288,23 @@ void Bezier::move(int x, int y)
 		*allLines[activeLine].yPoints[allLines[activeLine].activePoint] = y;
 	}
 }
-double Bezier::distLine(int x, int y, int lineIndex, int pointIndex)
+/* Caution: use this only when a point is active, or it will do no good */
+bool Bezier::connect(int x, int y)
 {
-	return sqrt( (x-*allLines[lineIndex].xPoints[pointIndex])*(x-*allLines[lineIndex].xPoints[pointIndex]) + (y-*allLines[lineIndex].yPoints[pointIndex])*(y-*allLines[lineIndex].yPoints[pointIndex]) );
-}
-void Bezier::drawLines(Uint32 color, bool redraw)
-{
-	int xNew, yNew, xOld, yOld;
-	int curvePoints = 20;
-	double step = 1.0/curvePoints;
-
-	if( redraw )
-		SDL_LockSurface( surface );
-	SDL_FillRect( surface, NULL, 0 );	// clear surface to black
-	for( int lineIterator = 0; lineIterator < allLines.size(); lineIterator++ )
+	if( !active )	// not moving a point
+		return false;
+	int oldPoint = allLines[activeLine].activePoint;	// get current point and line index
+	int oldLine  = activeLine;
+	if( select( x, y, oldLine, oldPoint ) )		// found a point near the current one (excluding active point)
 	{
-		/* Draw control points on picking surface */
-		for( int i = 0; i < 4; i++ )
-		{
-			// filledCircleRGBA( picking, *allLines[lineIterator].xPoints[i], *allLines[lineIterator].yPoints[i], 7, 255,255,lineIterator,255 );
-			/* Draw control point circles */
-			// circleRGBA( surface, *allLines[lineIterator].xPoints[i], *allLines[lineIterator].yPoints[i], 5, 255,255,255,255 );
-			circleColor( surface, *allLines[lineIterator].xPoints[i], *allLines[lineIterator].yPoints[i], 5, color - 0x8F );
-		}
-
-		lineRGBA( surface, *allLines[lineIterator].xPoints[0], *allLines[lineIterator].yPoints[0], *allLines[lineIterator].xPoints[1], *allLines[lineIterator].yPoints[1], 128,128,128,100 );
-		lineRGBA( surface, *allLines[lineIterator].xPoints[0], *allLines[lineIterator].yPoints[0], *allLines[lineIterator].xPoints[2], *allLines[lineIterator].yPoints[2], 128,128,128,100 );
-		lineRGBA( surface, *allLines[lineIterator].xPoints[0], *allLines[lineIterator].yPoints[0], *allLines[lineIterator].xPoints[3], *allLines[lineIterator].yPoints[3], 128,128,128,100 );
-		lineRGBA( surface, *allLines[lineIterator].xPoints[1], *allLines[lineIterator].yPoints[1], *allLines[lineIterator].xPoints[2], *allLines[lineIterator].yPoints[2], 128,128,128,100 );
-		lineRGBA( surface, *allLines[lineIterator].xPoints[1], *allLines[lineIterator].yPoints[1], *allLines[lineIterator].xPoints[3], *allLines[lineIterator].yPoints[3], 128,128,128,100 );
-		lineRGBA( surface, *allLines[lineIterator].xPoints[2], *allLines[lineIterator].yPoints[2], *allLines[lineIterator].xPoints[3], *allLines[lineIterator].yPoints[3], 128,128,128,100 );
-
-		/* Draw Bezier curve for current line */
-		xOld = *allLines[lineIterator].xPoints[0];
-		yOld = *allLines[lineIterator].yPoints[0];
-		for( double t = 0+step, points = 0; points < curvePoints; t += step, points++ )
-		{
-			xNew = t*t*t*( *allLines[lineIterator].xPoints[3] - *allLines[lineIterator].xPoints[0] + 3*( *allLines[lineIterator].xPoints[1] - *allLines[lineIterator].xPoints[2] ) ) + 3*t*t*( *allLines[lineIterator].xPoints[0] - 2**allLines[lineIterator].xPoints[1] + *allLines[lineIterator].xPoints[2] ) - 3*t*( *allLines[lineIterator].xPoints[0] - *allLines[lineIterator].xPoints[1] ) + ( *allLines[lineIterator].xPoints[0] );
-			yNew = t*t*t*( *allLines[lineIterator].yPoints[3] - *allLines[lineIterator].yPoints[0] + 3*( *allLines[lineIterator].yPoints[1] - *allLines[lineIterator].yPoints[2] ) ) + 3*t*t*( *allLines[lineIterator].yPoints[0] - 2**allLines[lineIterator].yPoints[1] + *allLines[lineIterator].yPoints[2] ) - 3*t*( *allLines[lineIterator].yPoints[0] - *allLines[lineIterator].yPoints[1] ) + ( *allLines[lineIterator].yPoints[0] );
-
-			// circleRGBA( surface, xNew, yNew, 5, r,g,b,a/3 );
-			// lineRGBA( surface, xNew, yNew, xOld, yOld, r,g,b,a );
-			lineColor( surface, xNew, yNew, xOld, yOld, color );
-
-			xOld = xNew;
-			yOld = yNew;
-		}
-		if( active )	// dragging a point - highlight that point
-			circleRGBA( surface, *allLines[activeLine].xPoints[allLines[activeLine].activePoint], *allLines[activeLine].yPoints[allLines[activeLine].activePoint], 5, 255,0,255,255 );
+		allLines[oldLine].xPoints[oldPoint] = allLines[activeLine].xPoints[allLines[activeLine].activePoint];
+		allLines[oldLine].yPoints[oldPoint] = allLines[activeLine].yPoints[allLines[activeLine].activePoint];
+		return true;
 	}
-	if( redraw )
-	{
-		SDL_UnlockSurface( surface );
-		SDL_Flip( surface );
-	}
+	else
+		return false;
 }
+/* TODO: Either disconnect all nodes linked at the given coordinates, or something. Think about it. */
 bool Bezier::disconnect(int x, int y)
 {
 	bLine tmpLine = allLines[activeLine];
@@ -363,69 +329,6 @@ bool Bezier::disconnect(int x, int y)
 	}
 	else
 		return false;	// no points found near (x,y)
-}
-/* Caution: use this only when a point is active, or it will do no good */
-bool Bezier::connect(int x, int y)
-{
-	if( !active )	// not moving a point
-		return false;
-	int oldPoint = allLines[activeLine].activePoint;	// get current point and line index
-	int oldLine  = activeLine;
-	if( select( x, y, oldLine, oldPoint ) )		// found a point near the current one (excluding active point)
-	{
-		allLines[oldLine].xPoints[oldPoint] = allLines[activeLine].xPoints[allLines[activeLine].activePoint];
-		allLines[oldLine].yPoints[oldPoint] = allLines[activeLine].yPoints[allLines[activeLine].activePoint];
-		return true;
-	}
-	else
-		return false;
-}
-/* TODO: Implement recursive subdivision to smooth out line sufficiently */
-void Bezier::drawLine(bLine bl)
-{
-	int xNew, yNew, xOld, yOld;
-	int curvePoints = 20;
-	double step = 1.0/curvePoints;
-
-	SDL_LockSurface( surface );
-	// SDL_FillRect( surface, NULL, 0 );	// clear surface to black
-	for( int lineIterator = 0; lineIterator < allLines.size(); lineIterator++ )
-	{
-		/* Draw control points on picking surface */
-		for( int i = 0; i < 4; i++ )
-		{
-			/* Draw control point circles */
-			// circleRGBA( surface, *bl.xPoints[i], *bl.yPoints[i], 5, 255,255,lineIterator,255 );
-			circleColor( surface, *bl.xPoints[i], *bl.yPoints[i], 5, 0xFFFFFF3F );
-		}
-
-		lineRGBA( surface, *bl.xPoints[0], *bl.yPoints[0], *bl.xPoints[1], *bl.yPoints[1], 128,128,128,100 );
-		lineRGBA( surface, *bl.xPoints[0], *bl.yPoints[0], *bl.xPoints[2], *bl.yPoints[2], 128,128,128,100 );
-		lineRGBA( surface, *bl.xPoints[0], *bl.yPoints[0], *bl.xPoints[3], *bl.yPoints[3], 128,128,128,100 );
-		lineRGBA( surface, *bl.xPoints[1], *bl.yPoints[1], *bl.xPoints[2], *bl.yPoints[2], 128,128,128,100 );
-		lineRGBA( surface, *bl.xPoints[1], *bl.yPoints[1], *bl.xPoints[3], *bl.yPoints[3], 128,128,128,100 );
-		lineRGBA( surface, *bl.xPoints[2], *bl.yPoints[2], *bl.xPoints[3], *bl.yPoints[3], 128,128,128,100 );
-
-		/* Draw Bezier curve for current line */
-		xOld = *bl.xPoints[0];
-		yOld = *bl.yPoints[0];
-		for( double t = 0+step, points = 0; points < curvePoints; t += step, points++ )
-		{
-			xNew = t*t*t*( *bl.xPoints[3] - *bl.xPoints[0] + 3*( *bl.xPoints[1] - *bl.xPoints[2] ) ) + 3*t*t*( *bl.xPoints[0] - 2**bl.xPoints[1] + *bl.xPoints[2] ) - 3*t*( *bl.xPoints[0] - *bl.xPoints[1] ) + ( *bl.xPoints[0] );
-			yNew = t*t*t*( *bl.yPoints[3] - *bl.yPoints[0] + 3*( *bl.yPoints[1] - *bl.yPoints[2] ) ) + 3*t*t*( *bl.yPoints[0] - 2**bl.yPoints[1] + *bl.yPoints[2] ) - 3*t*( *bl.yPoints[0] - *bl.yPoints[1] ) + ( *bl.yPoints[0] );
-
-			// circleRGBA( surface, xNew, yNew, 5, r,g,b,a/3 );
-			// lineColor( surface, xNew, yNew, xOld, yOld, 0xFFFFFFFF );
-			lineRGBA( surface, xNew, yNew, xOld, yOld, 255,255,255,255 );
-			// circleRGBA( surface, xNew, yNew, 3, 255,255,255,255 );
-
-			xOld = xNew;
-			yOld = yNew;
-		}
-
-	}
-	SDL_UnlockSurface( surface );
-	SDL_Flip( surface );
 }
 bool Bezier::splitLine(void)
 {
@@ -517,7 +420,6 @@ bool Bezier::splitLine(void)
 void Bezier::splitLine( bLine bl, int x, int y )
 {
 	int xNew, yNew;
-	int curvePoints = 20;
 	double smallestDistance = dist( x,y, *bl.xPoints[0],*bl.yPoints[0] ), smallestT;
 	double step = 1.0/curvePoints;
 	bLine first, second;
@@ -563,44 +465,109 @@ void Bezier::splitLine( bLine bl, int x, int y )
 	allLines.push_back( first );
 	allLines.push_back( second );
 }
+void Bezier::drawLines(Uint32 color, bool redraw)
+{
+	int xNew, yNew, xOld, yOld;
+	double step = 1.0/curvePoints;
+
+	if( redraw )
+		SDL_LockSurface( surface );
+	SDL_FillRect( surface, NULL, 0 );	// clear surface to black
+	for( int lineIterator = 0; lineIterator < allLines.size(); lineIterator++ )
+	{
+		/* Draw control points on picking surface */
+		for( int i = 0; i < 4; i++ )
+		{
+			// filledCircleRGBA( picking, *allLines[lineIterator].xPoints[i], *allLines[lineIterator].yPoints[i], 7, 255,255,lineIterator,255 );
+			/* Draw control point circles */
+			// circleRGBA( surface, *allLines[lineIterator].xPoints[i], *allLines[lineIterator].yPoints[i], 5, 255,255,255,255 );
+			circleColor( surface, *allLines[lineIterator].xPoints[i], *allLines[lineIterator].yPoints[i], 5, color - 0x8F );
+		}
+
+		lineRGBA( surface, *allLines[lineIterator].xPoints[0], *allLines[lineIterator].yPoints[0], *allLines[lineIterator].xPoints[1], *allLines[lineIterator].yPoints[1], 128,128,128,100 );
+		lineRGBA( surface, *allLines[lineIterator].xPoints[0], *allLines[lineIterator].yPoints[0], *allLines[lineIterator].xPoints[2], *allLines[lineIterator].yPoints[2], 128,128,128,100 );
+		lineRGBA( surface, *allLines[lineIterator].xPoints[0], *allLines[lineIterator].yPoints[0], *allLines[lineIterator].xPoints[3], *allLines[lineIterator].yPoints[3], 128,128,128,100 );
+		lineRGBA( surface, *allLines[lineIterator].xPoints[1], *allLines[lineIterator].yPoints[1], *allLines[lineIterator].xPoints[2], *allLines[lineIterator].yPoints[2], 128,128,128,100 );
+		lineRGBA( surface, *allLines[lineIterator].xPoints[1], *allLines[lineIterator].yPoints[1], *allLines[lineIterator].xPoints[3], *allLines[lineIterator].yPoints[3], 128,128,128,100 );
+		lineRGBA( surface, *allLines[lineIterator].xPoints[2], *allLines[lineIterator].yPoints[2], *allLines[lineIterator].xPoints[3], *allLines[lineIterator].yPoints[3], 128,128,128,100 );
+
+		/* Draw Bezier curve for current line */
+		xOld = *allLines[lineIterator].xPoints[0];
+		yOld = *allLines[lineIterator].yPoints[0];
+		for( double t = 0+step, points = 0; points < curvePoints; t += step, points++ )
+		{
+			xNew = t*t*t*( *allLines[lineIterator].xPoints[3] - *allLines[lineIterator].xPoints[0] + 3*( *allLines[lineIterator].xPoints[1] - *allLines[lineIterator].xPoints[2] ) ) + 3*t*t*( *allLines[lineIterator].xPoints[0] - 2**allLines[lineIterator].xPoints[1] + *allLines[lineIterator].xPoints[2] ) - 3*t*( *allLines[lineIterator].xPoints[0] - *allLines[lineIterator].xPoints[1] ) + ( *allLines[lineIterator].xPoints[0] );
+			yNew = t*t*t*( *allLines[lineIterator].yPoints[3] - *allLines[lineIterator].yPoints[0] + 3*( *allLines[lineIterator].yPoints[1] - *allLines[lineIterator].yPoints[2] ) ) + 3*t*t*( *allLines[lineIterator].yPoints[0] - 2**allLines[lineIterator].yPoints[1] + *allLines[lineIterator].yPoints[2] ) - 3*t*( *allLines[lineIterator].yPoints[0] - *allLines[lineIterator].yPoints[1] ) + ( *allLines[lineIterator].yPoints[0] );
+
+			// circleRGBA( surface, xNew, yNew, 5, r,g,b,a/3 );
+			// lineRGBA( surface, xNew, yNew, xOld, yOld, r,g,b,a );
+			lineColor( surface, xNew, yNew, xOld, yOld, color );
+
+			xOld = xNew;
+			yOld = yNew;
+		}
+		if( active )	// dragging a point - highlight that point
+			circleRGBA( surface, *allLines[activeLine].xPoints[allLines[activeLine].activePoint], *allLines[activeLine].yPoints[allLines[activeLine].activePoint], 5, 255,0,255,255 );
+	}
+	if( redraw )
+	{
+		SDL_UnlockSurface( surface );
+		SDL_Flip( surface );
+	}
+}
+/* TODO: Implement recursive subdivision to smooth out line sufficiently (or do a hack job and increase the number of points plotted) */
+void Bezier::drawLine(bLine bl)
+{
+	int xNew, yNew, xOld, yOld;
+	double step = 1.0/curvePoints;
+
+	SDL_LockSurface( surface );
+	// SDL_FillRect( surface, NULL, 0 );	// clear surface to black
+	for( int lineIterator = 0; lineIterator < allLines.size(); lineIterator++ )
+	{
+		/* Draw control points on picking surface */
+		for( int i = 0; i < 4; i++ )
+		{
+			/* Draw control point circles */
+			// circleRGBA( surface, *bl.xPoints[i], *bl.yPoints[i], 5, 255,255,lineIterator,255 );
+			circleColor( surface, *bl.xPoints[i], *bl.yPoints[i], 5, 0xFFFFFF3F );
+		}
+
+		lineRGBA( surface, *bl.xPoints[0], *bl.yPoints[0], *bl.xPoints[1], *bl.yPoints[1], 128,128,128,100 );
+		lineRGBA( surface, *bl.xPoints[0], *bl.yPoints[0], *bl.xPoints[2], *bl.yPoints[2], 128,128,128,100 );
+		lineRGBA( surface, *bl.xPoints[0], *bl.yPoints[0], *bl.xPoints[3], *bl.yPoints[3], 128,128,128,100 );
+		lineRGBA( surface, *bl.xPoints[1], *bl.yPoints[1], *bl.xPoints[2], *bl.yPoints[2], 128,128,128,100 );
+		lineRGBA( surface, *bl.xPoints[1], *bl.yPoints[1], *bl.xPoints[3], *bl.yPoints[3], 128,128,128,100 );
+		lineRGBA( surface, *bl.xPoints[2], *bl.yPoints[2], *bl.xPoints[3], *bl.yPoints[3], 128,128,128,100 );
+
+		/* Draw Bezier curve for current line */
+		xOld = *bl.xPoints[0];
+		yOld = *bl.yPoints[0];
+		for( double t = 0+step, points = 0; points < curvePoints; t += step, points++ )
+		{
+			xNew = t*t*t*( *bl.xPoints[3] - *bl.xPoints[0] + 3*( *bl.xPoints[1] - *bl.xPoints[2] ) ) + 3*t*t*( *bl.xPoints[0] - 2**bl.xPoints[1] + *bl.xPoints[2] ) - 3*t*( *bl.xPoints[0] - *bl.xPoints[1] ) + ( *bl.xPoints[0] );
+			yNew = t*t*t*( *bl.yPoints[3] - *bl.yPoints[0] + 3*( *bl.yPoints[1] - *bl.yPoints[2] ) ) + 3*t*t*( *bl.yPoints[0] - 2**bl.yPoints[1] + *bl.yPoints[2] ) - 3*t*( *bl.yPoints[0] - *bl.yPoints[1] ) + ( *bl.yPoints[0] );
+
+			// circleRGBA( surface, xNew, yNew, 5, r,g,b,a/3 );
+			// lineColor( surface, xNew, yNew, xOld, yOld, 0xFFFFFFFF );
+			lineRGBA( surface, xNew, yNew, xOld, yOld, 255,255,255,255 );
+			// circleRGBA( surface, xNew, yNew, 3, 255,255,255,255 );
+
+			xOld = xNew;
+			yOld = yNew;
+		}
+
+	}
+	SDL_UnlockSurface( surface );
+	SDL_Flip( surface );
+}
 inline double Bezier::dist(int x0, int y0, int x1, int y1)
 {
 	return (sqrt((x1-x0)*(x1-x0) + (y1-y0)*(y1-y0)));
 }
-void Bezier::highlightNear(int x, int y)
+inline double Bezier::distLine(int x, int y, int lineIndex, int pointIndex)
 {
-	int d;
-	pointsLines closestLine = { -1, -1, radiusRadius };
-
-	// perhaps check a radius around the cursor to see if there are even any nodes there? ...
-	// for( int i = -radiusGlobal; i <= radiusGlobal; i++ )
-	// {
-		// for( int j = -radiusGlobal; j <= radiusGlobal; j++ )
-		// {
-			// if(
-	SDL_LockSurface( surface );
-	drawLines(0xFFFFFFFF, false);
-	for( int lineIterator = 0; lineIterator < allLines.size(); lineIterator++ )		// check each line
-	{
-		for( int i = 0; i < 4; i++ )	// check each point
-		{
-			d = (*allLines[lineIterator].xPoints[i] - x) * (*allLines[lineIterator].xPoints[i] - x) + (*allLines[lineIterator].yPoints[i] - y) * (*allLines[lineIterator].yPoints[i] - y);
-			if( d <= closestLine.dist )
-			{
-                closestLine.aLine = lineIterator;
-				closestLine.aPoint = i;
-				closestLine.dist = d;
-			}
-		}
-	}
-	if( closestLine.aLine == -1 )
-		;
-	else		// find nearest point from (x,y)
-	{
-		circleRGBA( surface, *allLines[closestLine.aLine].xPoints[closestLine.aPoint], *allLines[closestLine.aLine].yPoints[closestLine.aPoint], 5, 255,0,255,255 );
-	}
-	SDL_UnlockSurface( surface );
-	SDL_Flip( surface );
+	return sqrt( (x-*allLines[lineIndex].xPoints[pointIndex])*(x-*allLines[lineIndex].xPoints[pointIndex]) + (y-*allLines[lineIndex].yPoints[pointIndex])*(y-*allLines[lineIndex].yPoints[pointIndex]) );
 }
 /*
 Using de Casteljau's algorithm

@@ -21,3 +21,16 @@ Pick a direction
 	Pick smallest angle left of incident vector
 	Choose the line that has that angle scalar vector control point (please, for pity's sake, revise this sentence)
 	Do it all again until returning to start point
+
+------------------------------------------------------------------------------------------------------------------------------
+
+Choose two nodes
+Region test
+	If fail: give error and exit
+Line segment test
+	If pass: goto reroute algorithm
+Straight line node test
+	If pass: draw line and end algorithm
+Split line at failure and route around node
+Repeat steps 2-4 on the two new lines
+
