@@ -59,6 +59,29 @@ Sprout::Sprout(SDL_Surface *sf, int numSprouts)
 		tmpSpot->degree = 0;
 		tmpSpot->xPoint = random( (surface->w)/2 ) + surface->w / 4;
 		tmpSpot->yPoint = random( (surface->h)/2 ) + surface->h / 4;
+		
+		// for( int j = 0; j < spots.size(); j++ )
+		// {
+			// if( dist2( tmpSpot->xPoint, tmpSpot->yPoint, *spots[j]->xPoint, *spots[j]->yPoint ) < selectRadius*selectRadius )
+			// {
+				// int xVec, yVec;
+				// double xUnit, yUnit;
+				// xVec = tmpSpot->xPoint - spots[j]->xPoint;
+				// yVec = tmpSpot->yPoint - spots[j]->yPoint;
+				
+				// xUnit = xVec / ( sqrt( xVec*xVec + yVec*yVec) );
+				// yUnit = yVec / ( sqrt( xVec*xVec + yVec*yVec) );
+				
+				// xVec = xUnit * selectRadius * 1.5;
+				// yVec = yUnit * selectRadius * 1.5;
+				
+				// tmpSpot->xPoint = tmpSpot->xPoint+xVec;
+				// tmpSpot->yPoint = tmpSpot->yPoint+yVec;
+				// j = -1;
+			// }
+		// }
+		
+		
 		spots.push_back( tmpSpot );
 	}
 	drawSpots();
@@ -85,7 +108,7 @@ bool Sprout::connect(void)
 
 	int firstSpot, secondSpot, x, y;
 	int index = 0;
-	bool run = true, drawn = true, intersects = false;
+	bool run = true, drawn = true, intersects = false, planted = false;
 	while( run )
 	{
 		while( SDL_PollEvent(&event) )
@@ -120,7 +143,7 @@ bool Sprout::connect(void)
 							}
 							else
 							{
-								if( select( event.button.x, event.button.y ) )		// clicked last point on path
+								if( select( event.button.x, event.button.y ) && planted )		// clicked last point on path
 								{
 									tmpConnection->xPoints.push_back( &spots[activeSpot]->xPoint );
 									tmpConnection->yPoints.push_back( &spots[activeSpot]->yPoint );
@@ -133,14 +156,33 @@ bool Sprout::connect(void)
 								{
 									// check if valid to add point there
 									drawLines();
+									drawConnection( tmpConnection );
 									if( lineValid( *tmpConnection->xPoints.back(), *tmpConnection->yPoints.back(), event.button.x, event.button.y ) )
 									{
-										tmpInt = new int;
-										*tmpInt = event.button.x;
-										tmpConnection->xPoints.push_back( tmpInt );
-										tmpInt = new int;
-										*tmpInt = event.button.y;
-										tmpConnection->yPoints.push_back( tmpInt );
+										if( select( event.button.x, event.button.y ) )	// mouse too close to another node
+										{
+											int xVec, yVec;
+											double xUnit, yUnit;
+											xVec = event.button.x - spots[activeSpot]->xPoint;
+											yVec = event.button.y - spots[activeSpot]->yPoint;
+											
+											xUnit = xVec / ( sqrt( xVec*xVec + yVec*yVec) );
+											yUnit = yVec / ( sqrt( xVec*xVec + yVec*yVec) );
+											
+											xVec = xUnit * selectRadius * 1.5;
+											yVec = yUnit * selectRadius * 1.5;
+											
+											SDL_WarpMouse( event.button.x+xVec, event.button.y+yVec );	// push mouse away from that node
+										}
+										else
+										{
+											tmpInt = new int;
+											*tmpInt = event.button.x;
+											tmpConnection->xPoints.push_back( tmpInt );
+											tmpInt = new int;
+											*tmpInt = event.button.y;
+											tmpConnection->yPoints.push_back( tmpInt );
+										}
 									}
 								}
 									drawConnection( tmpConnection );
@@ -151,9 +193,32 @@ bool Sprout::connect(void)
 					}
 					else if( event.button.button == SDL_BUTTON_RIGHT )
 					{
-						if( index == 2 )
+						if( index > 0 )
 						{
-							
+							if( !planted )
+							{
+								doLockSurface = false;
+								SDL_LockSurface( surface );
+									drawLines();
+									drawConnection( tmpConnection );
+									if( lineValid( *tmpConnection->xPoints.back(), *tmpConnection->yPoints.back(), event.button.x, event.button.y ) )
+									{
+										tmpSpot = new spot;
+										tmpSpot->xPoint = event.button.x;
+										tmpSpot->yPoint = event.button.y;
+										tmpSpot->degree = 2;
+										spots.push_back( tmpSpot );
+										tmpConnection->xPoints.push_back( &spots.back()->xPoint );
+										tmpConnection->yPoints.push_back( &spots.back()->yPoint );
+										drawConnection( tmpConnection );
+										planted = true;
+									}
+									drawLines();
+									drawConnection( tmpConnection );
+								SDL_UnlockSurface( surface );
+								SDL_Flip( surface );
+								doLockSurface = true;
+							}
 						}
 					}
 					break;

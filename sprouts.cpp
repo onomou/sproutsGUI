@@ -1,3 +1,4 @@
+#include <ctime>
 #include <SDL/SDL.h>
 #include <SDL/SDL_gfxPrimitives.h>
 
@@ -5,6 +6,7 @@
 
 int main( int argc, char* argv[] )
 {
+	srand(time(0));
 	/* Variables */
 	bool gameRunning = true, clicked = false;
 	int xMouse, yMouse, downX, downY, downRtX, downRtY;
