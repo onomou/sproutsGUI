@@ -14,39 +14,26 @@ class Sprout
 		static const int spotRadius = 5;
 		static const int selectRadius = 15;
 		static const int thickness = 1;		// thickness for drawing lines and points
-		// static const int curvePoints = 30;
 
 		/* Structures and other storage stuff */
 		struct spot   { int xPoint,yPoint,degree; };
-		// struct bezier { int *xPoints[3],*yPoints[3]; };
 		struct connection { std::vector<int*> xPoints, yPoints; };
 
 		std::vector<spot*>  spots;	// all the spots
 		std::vector<connection*> lines;	// all the lines
 
 		int activeSpot;
-
-		struct bucket
-		{
-			std::vector<int> edgePoints;
-			std::vector<bucket> interior;
-		};
-		std::vector<bucket> base;
-
-
-
+		
 		/* Variables */
 		SDL_Surface *surface;	// screen for drawing
 		bool doLockSurface;		// for internal use - make this false (be sure to reset it) if multiple draw commands need to be executed before flipping the surface
 		bool highlighted;
 
 		/* Private functions */
-		void thickLine(SDL_Surface*,int,int,int,int,Uint32);
-		
-		
+		void thickLine(SDL_Surface*,int,int,int,int,Uint32);	// draws a line of thickness n+2 (last parameter n)
 		  void connect(int,int,int,int);	// (by index) connect first spot to second spot through (x,y)
-		  void drawSpots(void);
-		  void drawConnection(connection*);
+		  void drawSpots(void);		// draw all the spots
+		  void drawConnection(connection*);		// draw the current temporary line
 		  bool select(int,int);			// set spot active it near x,y
 		double dist(int,int,int,int);	// return distance between (x0,y0) and (x1,y1)
 		   int dist2(int,int,int,int);	// return square of distance between (x0,y0) and (x1,y1)
@@ -166,9 +153,7 @@ bool Sprout::connect(void)
 					{
 						if( index == 2 )
 						{
-							delete tmpConnection;
-							return false;
-							// run = false;
+							
 						}
 					}
 					break;

@@ -35,7 +35,7 @@ int main( int argc, char* argv[] )
     SDL_WM_SetCaption( "SDL sandbox application", "Minimized" );
 
 	/* Game loop */
-	Sprout sp(screen,5);	// create new Sprout object with 5 sprouts
+	Sprout sp(screen,6);	// create new Sprout object with 5 sprouts
 	while( gameRunning )
 	{
 		while( SDL_PollEvent(&event) )
