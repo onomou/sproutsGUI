@@ -41,8 +41,8 @@ class Sprout
 
 		/* Private functions */
 		  void connect(int,int,int,int);	// (by index) connect first spot to second spot through (x,y)
-		  void refine(int,int,int);		// add more control points for a given line
 		  void drawSpots(void);
+		  void drawControls(connection*);
 		  bool select(int,int);			// set spot active it near x,y
 		double dist(int,int,int,int);	// return distance between (x0,y0) and (x1,y1)
 		   int dist2(int,int,int,int);	// return square of distance between (x0,y0) and (x1,y1)
@@ -99,94 +99,68 @@ bool Sprout::connect(void)
 				case SDL_MOUSEBUTTONUP:		// mouse released
 					if( event.button.button == SDL_BUTTON_LEFT )
 					{
-						switch( index )
+						if( index == 0 )	// TODO: rewrite this using a bool for started or not started already
 						{
-							case 0:
-								if( select( event.button.x, event.button.y ) )
+							if( select( event.button.x, event.button.y ) )
+							{
+								if( spots[activeSpot]->degree < 3 )
 								{
 									firstSpot = activeSpot;
-									index++;
-								}
-								break;	// now index is 1
-							case 1:
-								if( select( event.button.x, event.button.y ) )
-								{
-									secondSpot = activeSpot;
-									index++;
-									
-									/* Make a new spot under mouse : next click will fix its location */
-									tmpSpot = new spot;
-									tmpSpot->xPoint = event.button.x;
-									tmpSpot->yPoint = event.button.y;
-									/* Make a new line (that can be refined) stuck to these three points */
 									tmpConnection = new connection;
-									tmpConnection->xPoints.push_back( &spots[firstSpot ]->xPoint );
-									tmpConnection->xPoints.push_back( &spots[secondSpot]->xPoint );
-									tmpConnection->yPoints.push_back( &spots[firstSpot ]->yPoint );
-									tmpConnection->yPoints.push_back( &spots[secondSpot]->yPoint );
+									tmpConnection->xPoints.push_back( &spots[activeSpot]->xPoint );
+									tmpConnection->yPoints.push_back( &spots[activeSpot]->yPoint );
+									index++;
+									spots[activeSpot]->degree++;
 								}
-								break;	// now index is 2
-							case 2:
-								x = event.button.x;
-								y = event.button.y;
+							}
+						}
+						else
+						{
+							if( select( event.button.x, event.button.y ) )		// clicked last point on path
+							{
+								tmpConnection->xPoints.push_back( &spots[activeSpot]->xPoint );
+								tmpConnection->yPoints.push_back( &spots[activeSpot]->yPoint );
+								lines.push_back( tmpConnection );
+								spots[activeSpot]->degree++;
 								drawLines();
-								
-								if( lineValid( *tmpConnection->xPoints.back(), *tmpConnection->yPoints.back(), x, y ) && lineValid( *tmpConnection->xPoints[tmpConnection->xPoints.size()-2], *tmpConnection->yPoints[tmpConnection->yPoints.size()-2], x, y ) )		// hit a line in between
-								{
-									/* Fix new spot at current mouse location */
-									tmpSpot->xPoint = event.button.x;
-									tmpSpot->yPoint = event.button.y;
-									spots.push_back( tmpSpot );
-									/* Connect the temporary line to the new spot */
-									tmpConnection->xPoints.insert( tmpConnection->xPoints.end()-1, &spots.back()->xPoint );
-									tmpConnection->yPoints.insert( tmpConnection->yPoints.end()-1, &spots.back()->yPoint );
-									lines.push_back( tmpConnection );
-									
-									// connect( firstSpot, secondSpot, x, y );
-									drawLines();
-									run = false;
-								}
-								break;
-							default:
 								run = false;
+							}
+							else	// clicking control points
+							{
+								// check if valid to add point there
+								drawLines();
+								if( lineValid( *tmpConnection->xPoints.back(), *tmpConnection->yPoints.back(), event.button.x, event.button.y ) )
+								{
+									tmpInt = new int;
+									*tmpInt = event.button.x;
+									tmpConnection->xPoints.push_back( tmpInt );
+									tmpInt = new int;
+									*tmpInt = event.button.y;
+									tmpConnection->yPoints.push_back( tmpInt );
+									drawControls( tmpConnection );
+								}
+							}
 						}
 					}
 					else if( event.button.button == SDL_BUTTON_RIGHT )
 					{
 						if( index == 2 )
 						{
-							tmpInt = new int;
-							*tmpInt = event.button.x;
-							tmpConnection->xPoints.push_back( tmpInt );
-							tmpInt = new int;
-							*tmpInt = event.button.y;
-							tmpConnection->yPoints.push_back( tmpInt );
-							// tmpConnection->xPoints.insert( tmpConnection->xPoints.begin(), tmpInt );
-							// tmpConnection->xPoints.insert( tmpConnection->yPoints.begin()+1, tmpInt );
+							delete tmpConnection;
+							run = false;
 						}
 					}
 					break;
 				case SDL_MOUSEMOTION:		// mouse moved
 					doLockSurface = false;
 					SDL_LockSurface( surface );
-					drawLines();
-					highlightNear( event.motion.x, event.motion.y );
-
-					switch( index )		// this switch statement cascades 2,1,0 (could be written more succinctly)
-					{
-						case 0:
-						case 1:
-							circleColor( surface, event.motion.x, event.motion.y, selectRadius, grayedColor );
-							break;
-						case 2:
-							circleColor( surface, event.motion.x, event.motion.y, spotRadius, highlightColor );
+						if( index > 0 )
+						{
+							drawLines();
 							lineValid( *tmpConnection->xPoints.back(), *tmpConnection->yPoints.back(), event.motion.x, event.motion.y );
-							lineValid( *tmpConnection->xPoints[tmpConnection->xPoints.size()-2], *tmpConnection->yPoints[tmpConnection->yPoints.size()-2], event.motion.x, event.motion.y );
 							circleColor( surface, event.motion.x, event.motion.y, selectRadius, grayedColor );
-							break;
-						default:
-							break;
-					}
+						}
+						highlightNear( event.motion.x, event.motion.y );
 					SDL_UnlockSurface( surface );
 					SDL_Flip( surface );
 					break;
@@ -229,16 +203,6 @@ void Sprout::connect(int firstSpot, int secondSpot, int x, int y)
 	lines.push_back(two);
 	lines.push_back(one);
 }
-void Sprout::refine(int firstSpot, int x, int y)
-{
-	int *xNew, *yNew;
-	xNew = new int;
-	yNew = new int;
-	*xNew = x;
-	*yNew = y;
-	lines.back()->xPoints.insert( lines.back()->xPoints.begin()+1, xNew );
-	lines.back()->yPoints.insert( lines.back()->yPoints.begin()+1, yNew );
-}
 void Sprout::drawSpots(void)
 {
 	if( doLockSurface )
@@ -279,6 +243,14 @@ void Sprout::drawLines(void)
         SDL_UnlockSurface( surface );
         SDL_Flip( surface );
     }
+}
+void Sprout::drawControls(connection *tmpConnection)
+{
+	for( int i = 1; i < tmpConnection->xPoints.size(); i++ )	// what happens if there is only one xPoint?
+	{
+		lineColor( surface, *tmpConnection->xPoints[i], *tmpConnection->yPoints[i], *tmpConnection->xPoints[i-1], *tmpConnection->yPoints[i-1], grayedColor );
+		circleColor( surface, *tmpConnection->xPoints[i-1], *tmpConnection->yPoints[i-1], spotRadius/2, grayedColor );
+	}
 }
 // WARNING! only call this function if the line from index to x,y has not been drawn (only call this once per drawLines() call)
 // lock the screen, blank the screen, draw the other lines, then call this function twice (for two lines), then unlock and flip the screen
