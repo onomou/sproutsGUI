@@ -46,7 +46,7 @@ class Sprout
 		  bool select(int,int);			// set spot active it near x,y
 		double dist(int,int,int,int);	// return distance between (x0,y0) and (x1,y1)
 		   int dist2(int,int,int,int);	// return square of distance between (x0,y0) and (x1,y1)
-		  bool lineValid(connection*,int,int);	// draw line segments from index to x,y : returns false if hit another line
+		  bool lineValid(int,int,int,int);	// draw line segments from x0,y0 to x,y : returns false if hit another line
 	public:
 		Sprout(SDL_Surface*,int);	// default constructor : feed it a surface and initial spots number
 
@@ -77,6 +77,7 @@ bool Sprout::connect(void)
 {
 	SDL_Event event;			// dump event polls into this
 	int ctlPts[4];
+	int *tmpInt;
 	
 	spot *tmpSpot;
 	connection *tmpConnection;
@@ -130,7 +131,7 @@ bool Sprout::connect(void)
 								y = event.button.y;
 								drawLines();
 								
-								if( lineValid( tmpConnection, x, y ) && lineValid( tmpConnection, x, y ) )		// hit a line in between
+								if( lineValid( *tmpConnection->xPoints.back(), *tmpConnection->yPoints.back(), x, y ) && lineValid( *tmpConnection->xPoints[tmpConnection->xPoints.size()-2], *tmpConnection->yPoints[tmpConnection->yPoints.size()-2], x, y ) )		// hit a line in between
 								{
 									/* Fix new spot at current mouse location */
 									tmpSpot->xPoint = event.button.x;
@@ -154,7 +155,14 @@ bool Sprout::connect(void)
 					{
 						if( index == 2 )
 						{
-							
+							tmpInt = new int;
+							*tmpInt = event.button.x;
+							tmpConnection->xPoints.push_back( tmpInt );
+							tmpInt = new int;
+							*tmpInt = event.button.y;
+							tmpConnection->yPoints.push_back( tmpInt );
+							// tmpConnection->xPoints.insert( tmpConnection->xPoints.begin(), tmpInt );
+							// tmpConnection->xPoints.insert( tmpConnection->yPoints.begin()+1, tmpInt );
 						}
 					}
 					break;
@@ -171,16 +179,12 @@ bool Sprout::connect(void)
 							circleColor( surface, event.motion.x, event.motion.y, selectRadius, grayedColor );
 							break;
 						case 2:
-							lineValid( tmpConnection, event.motion.x, event.motion.y );
+							circleColor( surface, event.motion.x, event.motion.y, spotRadius, highlightColor );
+							lineValid( *tmpConnection->xPoints.back(), *tmpConnection->yPoints.back(), event.motion.x, event.motion.y );
+							lineValid( *tmpConnection->xPoints[tmpConnection->xPoints.size()-2], *tmpConnection->yPoints[tmpConnection->yPoints.size()-2], event.motion.x, event.motion.y );
 							circleColor( surface, event.motion.x, event.motion.y, selectRadius, grayedColor );
 							break;
-/*						case 2:
-							circleColor( surface, event.motion.x, event.motion.y, spotRadius, highlightColor );
-							// lineValid(  firstSpot, event.motion.x, event.motion.y );
-							// lineValid( secondSpot, event.motion.x, event.motion.y );
-							lineValid( lineIndex, event.motion.x, event.motion.y
-							break;
-*/						default:
+						default:
 							break;
 					}
 					SDL_UnlockSurface( surface );
@@ -191,6 +195,7 @@ bool Sprout::connect(void)
 			}
 		}
 	}
+	drawLines();
 }
 void Sprout::connect(int firstSpot, int secondSpot, int x, int y)
 {
@@ -277,7 +282,7 @@ void Sprout::drawLines(void)
 }
 // WARNING! only call this function if the line from index to x,y has not been drawn (only call this once per drawLines() call)
 // lock the screen, blank the screen, draw the other lines, then call this function twice (for two lines), then unlock and flip the screen
-bool Sprout::lineValid(connection *lin, int x, int y)
+bool Sprout::lineValid(int x0, int y0, int x, int y)
 {
 	double step;
 	bool clear = true;
@@ -286,18 +291,18 @@ bool Sprout::lineValid(connection *lin, int x, int y)
 	xOld = x;
 	yOld = y;
 	// step = 1.0 / dist( spots[index]->xPoint, spots[index]->yPoint, x, y );
-	step = 1.0 / dist( *lin->xPoints[lin->xPoints.size()-1], *lin->yPoints[lin->yPoints.size()-1], x, y );	//.back()
+	step = 1.0 / dist( x0, y0, x, y );
 	for( double t = 0+step; t <= 1; t += step )
 	{
-		xNew = *lin->xPoints.back() * t + x * ( 1 - t );		// xNew = spots[index]->xPoint * t + x * ( 1 - t );
-		yNew = *lin->yPoints.back() * t + y * ( 1 - t );		// yNew = spots[index]->yPoint * t + y * ( 1 - t );
+		xNew = x0 * t + x * ( 1 - t );		// xNew = spots[index]->xPoint * t + x * ( 1 - t );
+		yNew = y0 * t + y * ( 1 - t );		// yNew = spots[index]->yPoint * t + y * ( 1 - t );
 		if( xOld == xNew && yOld == yNew )
 			continue;
 		if( getpixel( surface, xNew, yNew ) == SDL_MapRGBA(surface->format, 255,255,255,255) )		// pixel plotted is already there (intersecting another line)
 		{
 			if( dist2( xNew, yNew, x, y ) > selectRadius*selectRadius )
 			{
-				if( dist2( xNew, yNew, *lin->xPoints.back(), *lin->yPoints.back() > selectRadius*selectRadius ) )	// if( dist2( xNew, yNew, spots[index]->xPoint, spots[index]->yPoint ) > selectRadius*selectRadius )
+				if( dist2( xNew, yNew, x0, y0 ) > selectRadius*selectRadius  )
 				{
 					circleColor( surface, xNew, yNew, 5, highlightColor );
 					clear = false;
