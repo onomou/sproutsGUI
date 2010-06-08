@@ -6,12 +6,12 @@
 
 int main( int argc, char* argv[] )
 {
-	srand(time(0));
 	/* Variables */
-	bool gameRunning = true, clicked = false;
+	bool gameRunning = true, clicked = false, ended = false;
 	int xMouse, yMouse, downX, downY, downRtX, downRtY;
 	int lineIndex, pointIndex;
-	SDL_Event event;			// dump event polls into this
+	SDL_Event event;	// dump event polls into this
+	SDL_Rect *rect;		// for positioning stuff in the center of the screen
 
 	/* Initialize SDL */
 	if( SDL_Init( SDL_INIT_EVERYTHING ) < 0 )	// should use SDL_INIT_VIDEO instead to save execution time
@@ -36,8 +36,15 @@ int main( int argc, char* argv[] )
 	SDL_FreeSurface( icon );
     SDL_WM_SetCaption( "SDL sandbox application", "Minimized" );
 
+	SDL_Surface *gameOver;
+	gameOver = SDL_LoadBMP("gameOver.bmp");
+	
+	rect = new SDL_Rect;
+	rect->x = screen->w/2 - gameOver->w/2;
+	rect->y = screen->h/2 - gameOver->h/2;
+
 	/* Game loop */
-	Sprout sp(screen,6);	// create new Sprout object with 5 sprouts
+	Sprout sp(screen,3);	// create new Sprout object
 	while( gameRunning )
 	{
 		while( SDL_PollEvent(&event) )
@@ -52,22 +59,24 @@ int main( int argc, char* argv[] )
 				case SDL_KEYUP:					// keyboard released
 					if( event.key.keysym.sym == SDLK_ESCAPE )
 						gameRunning = false;
-					else if( event.key.keysym.sym == SDLK_RETURN )
+					else if( event.key.keysym.sym == SDLK_RETURN || event.key.keysym.sym == SDLK_SPACE )
 					{
-//						sp.addLine();
-					}
-					else if( event.key.keysym.sym == SDLK_SPACE )
-					{
-						// sp.splitLine();
-						sp.drawLines();
-						// sp.activateLine2();	// do this once it has been worked on
+						if( ended )
+							return 0;
 					}
 					break;
 				case SDL_MOUSEBUTTONDOWN:	break;	// mouse pressed
 				case SDL_MOUSEBUTTONUP:		// mouse released
 					if( event.button.button == SDL_BUTTON_LEFT )
 					{
-						sp.connect();
+						if( ended )
+							return 0;
+						if( !sp.connect() )		// game has ended (all nodes have degree 3 or escape pressed)
+						{
+							ended = true;
+							SDL_BlitSurface( gameOver, NULL, screen, rect );
+							SDL_Flip( screen );
+						}
 					}
 					break;
 				case SDL_MOUSEMOTION:		// mouse moved

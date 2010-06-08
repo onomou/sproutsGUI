@@ -1,29 +1,26 @@
 #include <vector>
-#include "xorRNG.h"
 #include "draw.h"
-
-#include <iostream>
 
 class Sprout
 {
 	private:
 		/* Constants */
 		static const Uint32 defaultColor = 0xFFFFFFFF;		//
-		static const Uint32 grayedColor = 0xD4D4D480;		// assuming big-endian?
+		static const Uint32 grayedColor = 0xD4D4D4D4;		// assuming big-endian?
 		static const Uint32 highlightColor = 0xFF00FFFF;	//
-		static const int spotRadius = 5;
+		static const int sproutRadius = 5;
 		static const int selectRadius = 15;
 		static const int thickness = 1;		// thickness for drawing lines and points
 
 		/* Structures and other storage stuff */
-		struct spot   { int xPoint,yPoint,degree; };
+		struct sprout   { int xPoint,yPoint,degree; };
 		struct connection { std::vector<int*> xPoints, yPoints; };
 
-		std::vector<spot*>  spots;	// all the spots
+		std::vector<sprout*>  sprouts;	// all the sprouts
 		std::vector<connection*> lines;	// all the lines
 
-		int activeSpot;
-		
+		int activeSprout;
+
 		/* Variables */
 		SDL_Surface *surface;	// screen for drawing
 		bool doLockSurface;		// for internal use - make this false (be sure to reset it) if multiple draw commands need to be executed before flipping the surface
@@ -31,61 +28,51 @@ class Sprout
 
 		/* Private functions */
 		void thickLine(SDL_Surface*,int,int,int,int,Uint32);	// draws a line of thickness n+2 (last parameter n)
-		  void connect(int,int,int,int);	// (by index) connect first spot to second spot through (x,y)
-		  void drawSpots(void);		// draw all the spots
+		  void connect(int,int,int,int);	// (by index) connect first sprout to second sprout through (x,y)
+		  void drawSprouts(void);		// draw all the sprouts
 		  void drawConnection(connection*);		// draw the current temporary line
-		  bool select(int,int);			// set spot active it near x,y
+		  bool select(int,int);			// set sprout active it near x,y
 		double dist(int,int,int,int);	// return distance between (x0,y0) and (x1,y1)
 		   int dist2(int,int,int,int);	// return square of distance between (x0,y0) and (x1,y1)
 		  bool lineValid(int,int,int,int);	// draw line segments from x0,y0 to x,y : returns false if hit another line
 	public:
-		Sprout(SDL_Surface*,int);	// default constructor : feed it a surface and initial spots number
+		Sprout(SDL_Surface*,int);	// default constructor : feed it a surface and initial sprouts number
 
         void drawLines(void);
-		bool highlightNear(int,int);	// highlight spot if near x,y (calls select())
-		bool connect(void);				// loop to connect two spots
+		bool highlightNear(int,int);	// highlight sprout if near x,y (calls select())
+		bool connect(void);				// loop to connect two sprouts
 };
 Sprout::Sprout(SDL_Surface *sf, int numSprouts)
 {
 	doLockSurface = true;
 	highlighted = false;
 	surface = sf;
+	double theta = 0;
 
 	/* Set up initial board (seed sprouts) */
-	spot *tmpSpot;
-	for( int i = 0; i < numSprouts; i++ )
+	sprout *tmpSprout;
+	
+	/* Make first sprout centered */
+	tmpSprout = new sprout;
+	tmpSprout->degree = 0;
+	tmpSprout->xPoint = surface->w/2;
+	tmpSprout->yPoint = surface->h/2;
+	sprouts.push_back( tmpSprout );
+	
+	/* Put sprouts along an ellipse at the center of the screen */
+	for( int i = 1; i < numSprouts; i++ )
 	{
-		tmpSpot = new spot;
-		tmpSpot->degree = 0;
-		tmpSpot->xPoint = random( (surface->w)/2 ) + surface->w / 4;
-		tmpSpot->yPoint = random( (surface->h)/2 ) + surface->h / 4;
-		
-		// for( int j = 0; j < spots.size(); j++ )
-		// {
-			// if( dist2( tmpSpot->xPoint, tmpSpot->yPoint, *spots[j]->xPoint, *spots[j]->yPoint ) < selectRadius*selectRadius )
-			// {
-				// int xVec, yVec;
-				// double xUnit, yUnit;
-				// xVec = tmpSpot->xPoint - spots[j]->xPoint;
-				// yVec = tmpSpot->yPoint - spots[j]->yPoint;
-				
-				// xUnit = xVec / ( sqrt( xVec*xVec + yVec*yVec) );
-				// yUnit = yVec / ( sqrt( xVec*xVec + yVec*yVec) );
-				
-				// xVec = xUnit * selectRadius * 1.5;
-				// yVec = yUnit * selectRadius * 1.5;
-				
-				// tmpSpot->xPoint = tmpSpot->xPoint+xVec;
-				// tmpSpot->yPoint = tmpSpot->yPoint+yVec;
-				// j = -1;
-			// }
-		// }
-		
-		
-		spots.push_back( tmpSpot );
+		tmpSprout = new sprout;
+		tmpSprout->degree = 0;
+
+		tmpSprout->xPoint = surface->w/3 * cos(theta) + surface->w/2;
+		tmpSprout->yPoint = surface->h/3 * sin(theta) + surface->h/2;
+		theta += 2*3.14 / numSprouts;
+
+		sprouts.push_back( tmpSprout );
 	}
-	drawSpots();
-	/* End spots setup */
+	drawSprouts();
+	/* End sprouts setup */
 }
 void Sprout::thickLine(SDL_Surface *sf, int x0, int y0, int x, int y, Uint32 color)
 {
@@ -103,12 +90,15 @@ bool Sprout::connect(void)
 	int ctlPts[4];
 	int *tmpInt;
 	
-	spot *tmpSpot;
+	int firstSprout, secondSprout, x, y;
+	int index = 0;
+	int xVec, yVec;
+	double xUnit, yUnit;
+	bool run = true, drawn = true, intersects = false, planted = false;
+
+	sprout *tmpSprout;
 	connection *tmpConnection;
 
-	int firstSpot, secondSpot, x, y;
-	int index = 0;
-	bool run = true, drawn = true, intersects = false, planted = false;
 	while( run )
 	{
 		while( SDL_PollEvent(&event) )
@@ -117,8 +107,10 @@ bool Sprout::connect(void)
 			{
 				case SDL_KEYUP:					// keyboard released
 					if( event.key.keysym.sym == SDLK_ESCAPE )
-						return false;
-						// run = false;
+					{
+						drawLines();
+						return true;	// true?
+					}
 					break;
 				case SDL_MOUSEBUTTONDOWN:	break;	// mouse pressed
 				case SDL_MOUSEBUTTONUP:		// mouse released
@@ -130,14 +122,14 @@ bool Sprout::connect(void)
 							{
 								if( select( event.button.x, event.button.y ) )
 								{
-									if( spots[activeSpot]->degree < 3 )
+									if( sprouts[activeSprout]->degree < 3 )
 									{
-										firstSpot = activeSpot;
+										firstSprout = activeSprout;
 										tmpConnection = new connection;
-										tmpConnection->xPoints.push_back( &spots[activeSpot]->xPoint );
-										tmpConnection->yPoints.push_back( &spots[activeSpot]->yPoint );
+										tmpConnection->xPoints.push_back( &sprouts[activeSprout]->xPoint );
+										tmpConnection->yPoints.push_back( &sprouts[activeSprout]->yPoint );
 										index++;
-										spots[activeSpot]->degree++;
+										sprouts[activeSprout]->degree++;
 									}
 								}
 							}
@@ -145,12 +137,15 @@ bool Sprout::connect(void)
 							{
 								if( select( event.button.x, event.button.y ) && planted )		// clicked last point on path
 								{
-									tmpConnection->xPoints.push_back( &spots[activeSpot]->xPoint );
-									tmpConnection->yPoints.push_back( &spots[activeSpot]->yPoint );
-									lines.push_back( tmpConnection );
-									spots[activeSpot]->degree++;
-									drawLines();
-									run = false;
+									if( sprouts[activeSprout]->degree < 3 )
+									{
+										tmpConnection->xPoints.push_back( &sprouts[activeSprout]->xPoint );
+										tmpConnection->yPoints.push_back( &sprouts[activeSprout]->yPoint );
+										lines.push_back( tmpConnection );
+										sprouts[activeSprout]->degree++;
+										drawLines();
+										run = false;
+									}
 								}
 								else	// clicking control points
 								{
@@ -161,17 +156,15 @@ bool Sprout::connect(void)
 									{
 										if( select( event.button.x, event.button.y ) )	// mouse too close to another node
 										{
-											int xVec, yVec;
-											double xUnit, yUnit;
-											xVec = event.button.x - spots[activeSpot]->xPoint;
-											yVec = event.button.y - spots[activeSpot]->yPoint;
-											
+											xVec = event.button.x - sprouts[activeSprout]->xPoint;
+											yVec = event.button.y - sprouts[activeSprout]->yPoint;
+
 											xUnit = xVec / ( sqrt( xVec*xVec + yVec*yVec) );
 											yUnit = yVec / ( sqrt( xVec*xVec + yVec*yVec) );
-											
+
 											xVec = xUnit * selectRadius * 1.5;
 											yVec = yUnit * selectRadius * 1.5;
-											
+
 											SDL_WarpMouse( event.button.x+xVec, event.button.y+yVec );	// push mouse away from that node
 										}
 										else
@@ -203,13 +196,13 @@ bool Sprout::connect(void)
 									drawConnection( tmpConnection );
 									if( lineValid( *tmpConnection->xPoints.back(), *tmpConnection->yPoints.back(), event.button.x, event.button.y ) )
 									{
-										tmpSpot = new spot;
-										tmpSpot->xPoint = event.button.x;
-										tmpSpot->yPoint = event.button.y;
-										tmpSpot->degree = 2;
-										spots.push_back( tmpSpot );
-										tmpConnection->xPoints.push_back( &spots.back()->xPoint );
-										tmpConnection->yPoints.push_back( &spots.back()->yPoint );
+										tmpSprout = new sprout;
+										tmpSprout->xPoint = event.button.x;
+										tmpSprout->yPoint = event.button.y;
+										tmpSprout->degree = 2;
+										sprouts.push_back( tmpSprout );
+										tmpConnection->xPoints.push_back( &sprouts.back()->xPoint );
+										tmpConnection->yPoints.push_back( &sprouts.back()->yPoint );
 										drawConnection( tmpConnection );
 										planted = true;
 									}
@@ -243,47 +236,64 @@ bool Sprout::connect(void)
 		}
 	}
 	drawLines();
+	/* Check if all nodes have degree 3 */
+	int twos = 0;
+	for( int i = 0; i < sprouts.size(); i++ )
+	{
+		if( sprouts[i]->degree == 2 )
+		{
+			twos++;
+		}
+		
+		if( sprouts[i]->degree == 1 )	// still nodes left to connect
+		{
+			i = sprouts.size();
+			twos = 0;
+		}
+	}
+	if( twos == 1 )
+		return false;
 	return true;
 }
-void Sprout::connect(int firstSpot, int secondSpot, int x, int y)
+void Sprout::connect(int firstSprout, int secondSprout, int x, int y)
 {
-	int middleSpot;
-	
-	spot *tmpSpot;
-	tmpSpot = new spot;
+	int middleSprout;
+
+	sprout *tmpSprout;
+	tmpSprout = new sprout;
 	connection *one, *two;
 	one = new connection;
 	two = new connection;
 
-	/* Create new spot at x,y for snapping */
-	tmpSpot->xPoint = x;
-	tmpSpot->yPoint = y;
-	tmpSpot->degree = 2;
-	middleSpot = spots.size();
-	spots.push_back( tmpSpot );
-	drawSpots();
+	/* Create new sprout at x,y for snapping */
+	tmpSprout->xPoint = x;
+	tmpSprout->yPoint = y;
+	tmpSprout->degree = 2;
+	middleSprout = sprouts.size();
+	sprouts.push_back( tmpSprout );
+	drawSprouts();
 
 	/* Split line at x,y */
-	one->xPoints.push_back(&spots[firstSpot ]->xPoint);
-	one->xPoints.push_back(&spots[middleSpot]->xPoint);
-	one->yPoints.push_back(&spots[firstSpot ]->yPoint);
-	one->yPoints.push_back(&spots[middleSpot]->yPoint);
-	 
-	two->xPoints.push_back(&spots[secondSpot]->xPoint);
-	two->xPoints.push_back(&spots[middleSpot]->xPoint);
-	two->yPoints.push_back(&spots[secondSpot]->yPoint);
-	two->yPoints.push_back(&spots[middleSpot]->yPoint);
+	one->xPoints.push_back(&sprouts[firstSprout ]->xPoint);
+	one->xPoints.push_back(&sprouts[middleSprout]->xPoint);
+	one->yPoints.push_back(&sprouts[firstSprout ]->yPoint);
+	one->yPoints.push_back(&sprouts[middleSprout]->yPoint);
+
+	two->xPoints.push_back(&sprouts[secondSprout]->xPoint);
+	two->xPoints.push_back(&sprouts[middleSprout]->xPoint);
+	two->yPoints.push_back(&sprouts[secondSprout]->yPoint);
+	two->yPoints.push_back(&sprouts[middleSprout]->yPoint);
 
 	lines.push_back(two);
 	lines.push_back(one);
 }
-void Sprout::drawSpots(void)
+void Sprout::drawSprouts(void)
 {
 	if( doLockSurface )
 		SDL_LockSurface( surface );
 
-	for( int i = 0; i < spots.size(); i++ )
-		circleColor( surface, spots[i]->xPoint, spots[i]->yPoint, spotRadius, defaultColor );
+	for( int i = 0; i < sprouts.size(); i++ )
+		circleColor( surface, sprouts[i]->xPoint, sprouts[i]->yPoint, sproutRadius, grayedColor );
 
 	if( doLockSurface )
 	{
@@ -303,16 +313,13 @@ void Sprout::drawLines(void)
 	/* Draw lines */
 	for( int it = 0; it < lines.size(); it++ )
 	{
-		// lineColor( surface, *lines[it]->xPoints[0], *lines[it]->yPoints[0], *lines[it]->xPoints[1], *lines[it]->yPoints[1], defaultColor );
-		
 		// iterate through each pair of control points defining the line
 		for( int i = 1; i < lines[it]->xPoints.size(); i++ )	// what happens if there is only one xPoint?
 		{
-			// lineColor( surface, *lines[it]->xPoints[i], *lines[it]->yPoints[i], *lines[it]->xPoints[i-1], *lines[it]->yPoints[i-1], defaultColor );
 			thickLine( surface, *lines[it]->xPoints[i], *lines[it]->yPoints[i], *lines[it]->xPoints[i-1], *lines[it]->yPoints[i-1], defaultColor );
 		}
 	}
-    drawSpots();
+    drawSprouts();
 	if( doLockSurface )
     {
         SDL_UnlockSurface( surface );
@@ -325,7 +332,6 @@ void Sprout::drawConnection(connection *tmpConnection)
         SDL_LockSurface( surface );
 	for( int i = 1; i < tmpConnection->xPoints.size(); i++ )	// what happens if there is only one xPoint?
 	{
-		// circleColor( surface, *tmpConnection->xPoints[i-1], *tmpConnection->yPoints[i-1], spotRadius/2, grayedColor );
 		thickLine( surface, *tmpConnection->xPoints[i], *tmpConnection->yPoints[i], *tmpConnection->xPoints[i-1], *tmpConnection->yPoints[i-1], defaultColor );
 	}
 	if( doLockSurface )
@@ -342,39 +348,37 @@ bool Sprout::lineValid(int x0, int y0, int x, int y)
 	bool clear = true;
 	int xNew, yNew, xOld, yOld;
 	std::vector<int> xCollisions, yCollisions;
-	/* Draw line */
+	/* Check line segment between x0,y0 and x,y */
 	xOld = x;
 	yOld = y;
-	// step = 1.0 / dist( spots[index]->xPoint, spots[index]->yPoint, x, y );
 	step = 1.0 / dist( x0, y0, x, y );
 	for( double t = 0+step; t <= 1; t += step )
 	{
-		xNew = x0 * t + x * ( 1 - t );		// xNew = spots[index]->xPoint * t + x * ( 1 - t );
-		yNew = y0 * t + y * ( 1 - t );		// yNew = spots[index]->yPoint * t + y * ( 1 - t );
+		xNew = x0 * t + x * ( 1 - t );		// xNew = sprouts[index]->xPoint * t + x * ( 1 - t );
+		yNew = y0 * t + y * ( 1 - t );		// yNew = sprouts[index]->yPoint * t + y * ( 1 - t );
 		if( xOld == xNew && yOld == yNew )
 			continue;
 		if( getpixel( surface, xNew, yNew ) == SDL_MapRGBA(surface->format, 255,255,255,255) )		// pixel plotted is already there (intersecting another line)
 		{
-			if( dist2( xNew, yNew, x, y ) > selectRadius*selectRadius )
+			// if( dist2( xNew, yNew, x, y ) > selectRadius*selectRadius )
 			{
-				if( dist2( xNew, yNew, x0, y0 ) > selectRadius*selectRadius  )
+				if( dist2( xNew, yNew, x0, y0 ) > sproutRadius*sproutRadius )//selectRadius*selectRadius  )
 				{
 					xCollisions.push_back( xNew );
 					yCollisions.push_back( yNew );
-					// circleColor( surface, xNew, yNew, 5, highlightColor );
 					clear = false;
 				}
 			}
 		}
-			
+
 		xOld = xNew;
 		yOld = yNew;
 	}
-	// now draw the line
+	/* Draw line */
 	for( double t = 0+step; t <= 1; t += step )
 	{
-		xNew = x0 * t + x * ( 1 - t );		// xNew = spots[index]->xPoint * t + x * ( 1 - t );
-		yNew = y0 * t + y * ( 1 - t );		// yNew = spots[index]->yPoint * t + y * ( 1 - t );
+		xNew = x0 * t + x * ( 1 - t );		// xNew = sprouts[index]->xPoint * t + x * ( 1 - t );
+		yNew = y0 * t + y * ( 1 - t );		// yNew = sprouts[index]->yPoint * t + y * ( 1 - t );
 		{
 			for( int i = -thickness; i <= thickness; i++ )
 			{
@@ -385,6 +389,7 @@ bool Sprout::lineValid(int x0, int y0, int x, int y)
 			}
 		}
 	}
+	/* Draw circles at collisions */
 	for( int it = 0; it < xCollisions.size(); it++ )
 	{
 		filledCircleColor( surface, xCollisions[it], yCollisions[it], 5, highlightColor );
@@ -393,22 +398,21 @@ bool Sprout::lineValid(int x0, int y0, int x, int y)
 }
 bool Sprout::select(int x, int y)
 {
-	if( spots.empty() )
-		return false;		// no spots, so nothing to try to select
-	int closestPoint;
-	int closestRadius = surface->w, tmpRadius;
-	for( int it = 0; it < spots.size(); it++ )
+	if( sprouts.empty() )
+		return false;		// no sprouts, so nothing to try to select
+	int closestPoint, closestRadius = surface->w, tmpRadius;
+	for( int it = 0; it < sprouts.size(); it++ )
 	{
-		tmpRadius = dist2( x, y, spots[it]->xPoint, spots[it]->yPoint );
+		tmpRadius = dist2( x, y, sprouts[it]->xPoint, sprouts[it]->yPoint );
 		if( tmpRadius < closestRadius )
 		{
 			closestRadius = tmpRadius;
 			closestPoint = it;
 		}
 	}
-	if( closestRadius <= selectRadius * selectRadius )
+	if( closestRadius <= selectRadius * selectRadius )		// found a sprout withing selectRadius of x,y
 	{
-		activeSpot = closestPoint;
+		activeSprout = closestPoint;
 		return true;
 	}
 	return false;
@@ -418,15 +422,15 @@ bool Sprout::highlightNear(int x, int y)
 {
 	if( select( x, y ) )
 	{
-		// if( !highlighted )	// not previously highlighted, now mouse near a spot
+		// if( !highlighted )	// not previously highlighted, now mouse near a sprout
 		{
-			circleColor( surface, spots[activeSpot]->xPoint, spots[activeSpot]->yPoint, spotRadius, highlightColor );
+			circleColor( surface, sprouts[activeSprout]->xPoint, sprouts[activeSprout]->yPoint, sproutRadius, highlightColor );
 			highlighted = true;
 		}
 	}
 	else if( highlighted )	// was highlighted, now mouse not near that node
 	{
-		circleColor( surface, spots[activeSpot]->xPoint, spots[activeSpot]->yPoint, spotRadius, defaultColor );
+		circleColor( surface, sprouts[activeSprout]->xPoint, sprouts[activeSprout]->yPoint, sproutRadius, grayedColor );
 		highlighted = false;
 	}
 	if( doLockSurface )
