@@ -66,8 +66,6 @@ int main( int argc, char* argv[] )
 					if( event.button.button == SDL_BUTTON_LEFT )
 					{
 						sp.connect();
-						sp.drawLines();
-						std::cout << "Done.";
 					}
 					break;
 				case SDL_MOUSEMOTION:		// mouse moved

@@ -107,61 +107,68 @@ bool Sprout::connect(void)
 			{
 				case SDL_KEYUP:					// keyboard released
 					if( event.key.keysym.sym == SDLK_ESCAPE )
-						run = false;
+						return false;
+						// run = false;
 					break;
 				case SDL_MOUSEBUTTONDOWN:	break;	// mouse pressed
 				case SDL_MOUSEBUTTONUP:		// mouse released
 					if( event.button.button == SDL_BUTTON_LEFT )
 					{
-						if( index == 0 )	// TODO: rewrite this using a bool for started or not started already
-						{
-							if( select( event.button.x, event.button.y ) )
+						doLockSurface = false;
+						SDL_LockSurface( surface );
+							if( index == 0 )	// TODO: rewrite this using a bool for started or not started already
 							{
-								if( spots[activeSpot]->degree < 3 )
+								if( select( event.button.x, event.button.y ) )
 								{
-									firstSpot = activeSpot;
-									tmpConnection = new connection;
+									if( spots[activeSpot]->degree < 3 )
+									{
+										firstSpot = activeSpot;
+										tmpConnection = new connection;
+										tmpConnection->xPoints.push_back( &spots[activeSpot]->xPoint );
+										tmpConnection->yPoints.push_back( &spots[activeSpot]->yPoint );
+										index++;
+										spots[activeSpot]->degree++;
+									}
+								}
+							}
+							else
+							{
+								if( select( event.button.x, event.button.y ) )		// clicked last point on path
+								{
 									tmpConnection->xPoints.push_back( &spots[activeSpot]->xPoint );
 									tmpConnection->yPoints.push_back( &spots[activeSpot]->yPoint );
-									index++;
+									lines.push_back( tmpConnection );
 									spots[activeSpot]->degree++;
+									drawLines();
+									run = false;
 								}
-							}
-						}
-						else
-						{
-							if( select( event.button.x, event.button.y ) )		// clicked last point on path
-							{
-								tmpConnection->xPoints.push_back( &spots[activeSpot]->xPoint );
-								tmpConnection->yPoints.push_back( &spots[activeSpot]->yPoint );
-								lines.push_back( tmpConnection );
-								spots[activeSpot]->degree++;
-								drawLines();
-								run = false;
-							}
-							else	// clicking control points
-							{
-								// check if valid to add point there
-								drawLines();
-								if( lineValid( *tmpConnection->xPoints.back(), *tmpConnection->yPoints.back(), event.button.x, event.button.y ) )
+								else	// clicking control points
 								{
-									tmpInt = new int;
-									*tmpInt = event.button.x;
-									tmpConnection->xPoints.push_back( tmpInt );
-									tmpInt = new int;
-									*tmpInt = event.button.y;
-									tmpConnection->yPoints.push_back( tmpInt );
-									drawConnection( tmpConnection );
+									// check if valid to add point there
+									drawLines();
+									if( lineValid( *tmpConnection->xPoints.back(), *tmpConnection->yPoints.back(), event.button.x, event.button.y ) )
+									{
+										tmpInt = new int;
+										*tmpInt = event.button.x;
+										tmpConnection->xPoints.push_back( tmpInt );
+										tmpInt = new int;
+										*tmpInt = event.button.y;
+										tmpConnection->yPoints.push_back( tmpInt );
+									}
 								}
+									drawConnection( tmpConnection );
 							}
-						}
+						SDL_UnlockSurface( surface );
+						SDL_Flip( surface );
+						doLockSurface = true;
 					}
 					else if( event.button.button == SDL_BUTTON_RIGHT )
 					{
 						if( index == 2 )
 						{
 							delete tmpConnection;
-							run = false;
+							return false;
+							// run = false;
 						}
 					}
 					break;
@@ -178,6 +185,7 @@ bool Sprout::connect(void)
 						highlightNear( event.motion.x, event.motion.y );
 					SDL_UnlockSurface( surface );
 					SDL_Flip( surface );
+					doLockSurface = true;
 					break;
 				default:
 					break;
@@ -185,6 +193,7 @@ bool Sprout::connect(void)
 		}
 	}
 	drawLines();
+	return true;
 }
 void Sprout::connect(int firstSpot, int secondSpot, int x, int y)
 {
