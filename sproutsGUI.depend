@@ -200,7 +200,7 @@
 
 1274343216 c:\users\steven\code\sproutsgui\draw.h
 
-1274986035 source:d:\code\sproutsgui\main.cpp
+1275034834 source:d:\code\sproutsgui\main.cpp
 	<cstdlib>
 	<iostream>
 	<SDL/SDL.h>
@@ -391,7 +391,7 @@
 	<math.h>
 	"SDL.h"
 
-1274986140 d:\code\sproutsgui\bezier.h
+1275069824 d:\code\sproutsgui\bezier.h
 	<algorithm>
 	<ctime>
 	<vector>

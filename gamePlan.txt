@@ -34,3 +34,22 @@ Straight line node test
 Split line at failure and route around node
 Repeat steps 2-4 on the two new lines
 
+:::::::::::::::::::::::::::::::::::::::::::
+
+Region Test
+	If two nodes are part of the same region, pass. Otherwise, fail.
+
+Line Segment Test
+	If two line segments intersect, pass. Otherwise, fail.
+
+Straight line node test
+	If the straight line between two nodes does come within r distance of any other node, fail. Otherwise, pass.
+
+Route
+	Split the line into two lines having endpoints of the original line's start and end points, and sharing a commend endpoint of (n1+rcos(t),n2+rcos(t)), where t is the angle between the original line and the x-axis and r is a constant stored with the node.
+	Then decrement r by some value.
+	
+--------------------------------------------
+              New algorithm
+--------------------------------------------
+

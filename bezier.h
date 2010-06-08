@@ -9,50 +9,68 @@
 class Bezier
 {
 	private:
+
+	struct t
+	{
+		int xCenter, yCenter, lineIndex;
+	};
+	struct v
+	{
+		int xRel, yRel, xOrigin, yOrigin, lineIndex;
+	};
+
 		/* Global constants for this class  */
 		static const int r = 255,
 						 g = 255,
 						 b = 255,
 						 a = 255;
 		static const int curvePoints = 40;
+		static const int circleRadius = 5;
 		static const int radiusGlobal = 15;
 		static const int radiusRadius = 225;
+		static const Uint32 defaultColor = 0xFFFFFFFF;		//
+		static const Uint32 grayedColor = 0xD4D4D480;		// assuming big-endian?
+		static const Uint32 highlightColor = 0xFF00FFFF;	//
 		/* End constants */
-		
+
 		struct pointsLines					// for associating an active line, point pair and its distance from some other point
 		{ int aLine, aPoint, dist; };
-		
+
 		struct bLine
 		{
 			int *xPoints[4];				// array of 4 pointers to integers
-			int *yPoints[4];				// 
+			int *yPoints[4];				//
 			int activePoint;
 		};
 		std::vector<bLine> allLines;
 		int activeLine;
-		
+
 		SDL_Surface *surface;				// screen to draw onto
 		SDL_Surface *picking;	// may be used for selecting nodes at some point (if checking all distances becomes too slow) : NOT USED CURRENTLY
-		
+
+		bool doLockSurface;		// for internal use - make this false (be sure to reset it) if multiple draw commands need to be executed before flipping the surface
+		bool highlighted;		// true iff mouse is near a point
+
 		/* Private functions */
 		double dist(int,int,int,int);		// return distance between (x,y) and (x1,y1)
 		double distLine(int,int,int,int);	// return distance between (x,y) and (lineIndex,pointIndex)
-		
+		void drawCircles(bLine&,Uint32=defaultColor);	// draw curve's circles, default color white
+
 	public:
 		/* Public variables */
 		bool active;					// true if moving a point
-		
+
 		/* Constructors */
 		Bezier(SDL_Surface*);			// default constructor
-		
+
 		/* Curve generation */
 		void addLine(bool=false);		// make new line with user input, or random point positions if bool is true
-		
+
 		/* Curve selection */
-		void highlightNear(int,int);	// highlights a node if input near enough to select it
-		bool select(int,int,bool);		// accepts x,y : if close to a point, set that point active
+		void highlightNear(int,int);	// highlights a node if input near enough to select it - call drawLines() first
+		bool select(int,int,bool=false);	// accepts x,y : if close to a point, set that point active - bool value controls whether to select the active point
 		bool select(int,int,int,int);	// accepts x,y and oldLine,oldPoint to skip an already found point
-		
+
 		/* Curve operations */
 		void move(int,int);				// move active point to (x,y)
 		bool connect(int,int);			// connects the point at (x,y) to an existing point (if near enough)
@@ -60,8 +78,11 @@ class Bezier
 		bool splitLine(void);			// accepts input (endpoint,endpoint) and spot on curve to split it into two
 		void splitLine(bLine,int,int);
 
+		void activateLine(void);
+		void activateLine2(void);
+
 		/* Curve visualization */
-		void drawLines(Uint32=0xFFFFFFFF,bool=true);	// blank surface, then draw all lines in the structure - default color is white, pass false to not lock/unlock/flip surface
+		void drawLines(Uint32=defaultColor);	// blank surface, then draw all lines in the structure - default color is white
 		void drawLine(bLine);			// blank surface, then draw only given line
 };
 Bezier::Bezier(SDL_Surface *sf)
@@ -74,9 +95,11 @@ Bezier::Bezier(SDL_Surface *sf)
 	// SDL_FillRect( picking, NULL, 0 );							// blank picking surface
 
 	/* Generate a new curve */
-	addLine(true);
-	
+	// addLine(true);
+
 	active = false;		// not moving a point initially
+	doLockSurface = true;
+	highlighted = false;
 }
 void Bezier::addLine(bool rnd)
 {
@@ -85,14 +108,14 @@ void Bezier::addLine(bool rnd)
 	bLine tmpBezier;
 	SDL_Event event;
 	SDL_PollEvent(&event);
-	if( rnd )	// TODO: Make this part flow better so it isn't completely separate from the following section 
+	if( rnd )	// TODO: Make this part flow better so it isn't completely separate from the following section
 	{
 		for( int i = 0; i < 4; i++ )
 		{
 			 tmpBezier.xPoints[i] = new int;
 			 tmpBezier.yPoints[i] = new int;
 			*tmpBezier.xPoints[i] = random(surface->w);	// pick random points within the surface area
-			*tmpBezier.yPoints[i] = random(surface->h); // 
+			*tmpBezier.yPoints[i] = random(surface->h); //
 		}
 		allLines.push_back(tmpBezier);
 	}
@@ -171,38 +194,21 @@ void Bezier::addLine(bool rnd)
 }
 void Bezier::highlightNear(int x, int y)
 {
-	int d;
-	pointsLines closestLine = { -1, -1, radiusRadius };
-
-	// perhaps check a radius around the cursor to see if there are even any nodes there? ...
-	// for( int i = -radiusGlobal; i <= radiusGlobal; i++ )
-	// {
-		// for( int j = -radiusGlobal; j <= radiusGlobal; j++ )
-		// {
-			// if(
-	SDL_LockSurface( surface );
-	drawLines(0xFFFFFFFF, false);
-	for( int lineIterator = 0; lineIterator < allLines.size(); lineIterator++ )		// check each line
+	if( select(x,y) )
 	{
-		for( int i = 0; i < 4; i++ )	// check each point
+		if( !highlighted )	// not previously highlighted, now mouse near a node
 		{
-			d = (*allLines[lineIterator].xPoints[i] - x) * (*allLines[lineIterator].xPoints[i] - x) + (*allLines[lineIterator].yPoints[i] - y) * (*allLines[lineIterator].yPoints[i] - y);
-			if( d <= closestLine.dist )
-			{
-                closestLine.aLine = lineIterator;
-				closestLine.aPoint = i;
-				closestLine.dist = d;
-			}
+			circleColor( surface, *allLines[activeLine].xPoints[allLines[activeLine].activePoint], *allLines[activeLine].yPoints[allLines[activeLine].activePoint], circleRadius, highlightColor );
+			highlighted = true;
 		}
 	}
-	if( closestLine.aLine == -1 )
-		;
-	else		// find nearest point from (x,y)
+	else if( highlighted )	// was highlighted, now mouse not near that node
 	{
-		circleRGBA( surface, *allLines[closestLine.aLine].xPoints[closestLine.aPoint], *allLines[closestLine.aLine].yPoints[closestLine.aPoint], 5, 255,0,255,255 );
+		circleColor( surface, *allLines[activeLine].xPoints[allLines[activeLine].activePoint], *allLines[activeLine].yPoints[allLines[activeLine].activePoint], circleRadius, defaultColor );
+		highlighted = false;
 	}
-	SDL_UnlockSurface( surface );
-	SDL_Flip( surface );
+	if( doLockSurface )
+		SDL_Flip( surface );
 }
 // http://www.libsdl.org/intro.en/usingvideo.html
 bool Bezier::select(int x, int y, bool adding)
@@ -333,43 +339,55 @@ bool Bezier::disconnect(int x, int y)
 bool Bezier::splitLine(void)
 {
 	int selectedPoints = 0, firstLine, firstPoint, secondLine, secondPoint;
-	int oldPoint, oldLine, xMouse, yMouse, searchBounds = 3;
+	int oldPoint, oldLine, searchBounds = 3;
 	bool run = true, selected = false;
 	bLine bl;
 	SDL_Event event;
+	drawLines( grayedColor );
 	while( run )
 	{
 		while( SDL_PollEvent(&event) )		// get events
 		{
 			switch( event.type )
 			{
-				case SDL_KEYUP:				// keyboard released
-					if( event.key.keysym.sym == SDLK_ESCAPE )
-						return false;	// break out of splitting - this should reinstate the chosen line (to be done later)
 				case SDL_MOUSEBUTTONDOWN:	// mouse pressed
 					if( event.button.button == SDL_BUTTON_LEFT )
 					{
-						xMouse = event.button.x;	// get mouse click location
-						yMouse = event.button.y;	//
-
 						// the select function needs some help - if two lines are connected to a single node, it will just select an arbitrary line (which one should it choose?) - maybe click on node, then click on line from node
-						if( select(xMouse,yMouse,false) )		// clicked near another node : snap to that node	(WARNING! This function will change activeLine and activePoint if it returns true)
+						if( select( event.button.x, event.button.y, false) )		// clicked near another node : snap to that node	(WARNING! This function will change activeLine and activePoint if it returns true)
 						{
 							selected = true;
 							bl = allLines[activeLine];	// copy chosen line to a temporary one
-							drawLines( SDL_MapRGBA(surface->format, 100,100,100,100) );
+							drawLines( grayedColor );
 							drawLine( bl );
 							allLines.erase(allLines.begin() + activeLine);	// remove line to be split (it is now in bl)
 							run = false;
 						}
 						break;
 					}
-					else if( event.button.button == SDL_BUTTON_RIGHT )
+					break;
+				case SDL_MOUSEBUTTONUP:
+					if( event.button.button == SDL_BUTTON_RIGHT )
 						return false;
-				// case SDL_MOUSEMOTION:
-					// if( select( event.motion.x, event.motion.y, false ) )
-						// fill in here with code to highlight a near node
-					// break;
+					break;
+				case SDL_MOUSEMOTION:
+						// fill in here with code to highlight a near node (working on it)
+					doLockSurface = false;
+					SDL_LockSurface( surface );
+						/* TODO: make select() and highlight() functions work together so select() won't be called twice in this section */
+						if( select( event.motion.x, event.motion.y ) )		// found a node near the mouse - highlight that line
+						{
+							drawLines( grayedColor );
+							drawLine( allLines[activeLine] );
+						}
+						highlightNear( event.motion.x, event.motion.y );
+					SDL_UnlockSurface( surface );
+					SDL_Flip( surface );
+					doLockSurface = true;
+					break;
+				case SDL_KEYUP:				// keyboard released
+					if( event.key.keysym.sym == SDLK_ESCAPE )
+						return false;	// break out of splitting - this should reinstate the chosen line (to be done later)
 				case SDL_QUIT:		// top-right X clicked
 					return false;
 				default:
@@ -394,7 +412,7 @@ bool Bezier::splitLine(void)
 							{
 								if( (i-j)*(i-j) > searchBounds*searchBounds )	// exclude edges of i X j square not in a circle (huh?)
 									continue;
-								if( getpixel( surface, event.button.x + i, event.button.y + j ) == SDL_MapRGBA(surface->format, 255,255,255,255) )	// found white pixel (curve point probably)
+								if( getpixel( surface, event.button.x + i, event.button.y + j ) == defaultColor )	// found white pixel (curve point probably)
 								{
 									splitLine( bl, event.button.x + i, event.button.y + j );
 									drawLines();
@@ -465,31 +483,162 @@ void Bezier::splitLine( bLine bl, int x, int y )
 	allLines.push_back( first );
 	allLines.push_back( second );
 }
-void Bezier::drawLines(Uint32 color, bool redraw)
+void Bezier::activateLine(void)
+{
+	SDL_Event event;
+	bool run = true;
+
+	t tmp;
+	std::vector<t> centroids;
+	int shRad=surface->w, shLine=0;
+
+	// get centroids for each curve
+	for( int lineIterator = 0; lineIterator < allLines.size(); lineIterator++ )
+	{
+		tmp.xCenter = (*allLines[lineIterator].xPoints[0] + *allLines[lineIterator].xPoints[1] + *allLines[lineIterator].xPoints[2] + *allLines[lineIterator].xPoints[3]) / 4;
+		tmp.yCenter = (*allLines[lineIterator].yPoints[0] + *allLines[lineIterator].yPoints[1] + *allLines[lineIterator].yPoints[2] + *allLines[lineIterator].yPoints[3]) / 4;
+		tmp.lineIndex = lineIterator;
+		centroids.push_back(tmp);
+	}
+	drawLines( grayedColor );
+	while( run )
+	{
+		while( SDL_PollEvent(&event) )		// get events
+		{
+			switch( event.type )
+			{
+				case SDL_MOUSEMOTION:
+// shRad=surface->w;
+					shRad = dist( centroids[0].xCenter, centroids[0].yCenter, event.motion.x, event.motion.y );
+					shLine = centroids[0].lineIndex;
+					// scan each centroid - get distance from it to mouse
+					for( int it = 0; it < centroids.size(); it++ )
+					{
+						if( dist( centroids[it].xCenter, centroids[it].yCenter, event.motion.x, event.motion.y ) < shRad )
+						{
+							shRad = dist( centroids[it].xCenter, centroids[it].yCenter, event.motion.x, event.motion.y );	// yech, change this
+							shLine = centroids[it].lineIndex;
+						}
+					}
+					doLockSurface = false;
+					SDL_LockSurface( surface );
+							drawLines( grayedColor );
+							drawLine( allLines[shLine] );
+					SDL_UnlockSurface( surface );
+					SDL_Flip( surface );
+					doLockSurface = true;
+					break;
+				case SDL_MOUSEBUTTONUP:
+					if( event.button.button == SDL_BUTTON_RIGHT )
+						return;
+					break;
+				default:
+					break;
+			}
+		}
+	}
+}
+/* Please! Work on this at some point! */
+void Bezier::activateLine2(void)
+{
+	SDL_Event event;
+	bool run = true;
+
+	v tmp;
+	std::vector<v> transforms;
+	int shRad=surface->w, shLine=0;
+	int mxRel, myRel;
+	
+	// dx1 is TL, dy1 is TR, dx2 is BL, dy2 is BR
+	int dx1 = (*allLines[lineIterator].xPoints[1] - *allLines[lineIterator].xPoints[0]), dy1 = (*allLines[lineIterator].yPoints[1] - *allLines[lineIterator].yPoints[0]);
+	int dx2 = (*allLines[lineIterator].xPoints[2] - *allLines[lineIterator].xPoints[0]), dy1 = (*allLines[lineIterator].yPoints[2] - *allLines[lineIterator].yPoints[0]);
+
+	// transform each fourth point relative to others (unit vectors)
+	for( int lineIterator = 0; lineIterator < allLines.size(); lineIterator++ )
+	{
+		tmp.xOrigin = *allLines[lineIterator].xPoints[0];
+		tmp.yOrigin = *allLines[lineIterator].yPoints[0];
+		tmp.xRel = dx1 * *allLines[lineIterator].xPoints[3] + dy1 * *allLines[lineIterator].yPoints[3];
+		tmp.yRel = dx2 * *allLines[lineIterator].xPoints[3] + dy2 * *allLines[lineIterator].yPoints[3];
+		
+		tmp.lineIndex = lineIterator;
+		transforms.push_back(tmp);
+	}
+	drawLines( grayedColor );
+	while( run )
+	{
+		while( SDL_PollEvent(&event) )		// get events
+		{
+			switch( event.type )
+			{
+				case SDL_MOUSEMOTION:
+// shRad=surface->w;
+					// scan each centroid - get distance from it to mouse
+					// for( int it = 0; it < transforms.size(); it++ )
+					// {
+						// mxRel = dx1 * event.motion.x + dy1 * event.motion.y;
+						// myRel = dx2 * event.motion.x + dy2 * event.motion.y;
+						// if( dist( transforms[it].xCenter, transforms[it].yCenter, event.motion.x, event.motion.y ) < shRad )
+						// {
+							// shRad = dist( transforms[it].xCenter, transforms[it].yCenter, event.motion.x, event.motion.y );	// yech, change this
+							// shLine = transforms[it].lineIndex;
+						// }
+					// }
+					
+					// transform mouse coordinates for each transforms curve point blah blah blah
+					
+					
+					doLockSurface = false;
+					SDL_LockSurface( surface );
+							drawLines( grayedColor );
+							drawLine( allLines[shLine] );
+					SDL_UnlockSurface( surface );
+					SDL_Flip( surface );
+					doLockSurface = true;
+					break;
+				case SDL_MOUSEBUTTONUP:
+					if( event.button.button == SDL_BUTTON_RIGHT )
+						return;
+					break;
+				default:
+					break;
+			}
+		}
+	}
+}
+void Bezier::drawLines(Uint32 color)
 {
 	int xNew, yNew, xOld, yOld;
 	double step = 1.0/curvePoints;
 
-	if( redraw )
-		SDL_LockSurface( surface );
+    if( doLockSurface )
+        SDL_LockSurface( surface );
+
 	SDL_FillRect( surface, NULL, 0 );	// clear surface to black
 	for( int lineIterator = 0; lineIterator < allLines.size(); lineIterator++ )
 	{
 		/* Draw control points on picking surface */
-		for( int i = 0; i < 4; i++ )
-		{
+		drawCircles( allLines[lineIterator], color & grayedColor );
+		// for( int i = 0; i < 4; i++ )
+		// {
 			// filledCircleRGBA( picking, *allLines[lineIterator].xPoints[i], *allLines[lineIterator].yPoints[i], 7, 255,255,lineIterator,255 );
 			/* Draw control point circles */
 			// circleRGBA( surface, *allLines[lineIterator].xPoints[i], *allLines[lineIterator].yPoints[i], 5, 255,255,255,255 );
-			circleColor( surface, *allLines[lineIterator].xPoints[i], *allLines[lineIterator].yPoints[i], 5, color - 0x8F );
-		}
+			// circleColor( surface, *allLines[lineIterator].xPoints[i], *allLines[lineIterator].yPoints[i], 5, color - 0x8F );
+		// }
 
-		lineRGBA( surface, *allLines[lineIterator].xPoints[0], *allLines[lineIterator].yPoints[0], *allLines[lineIterator].xPoints[1], *allLines[lineIterator].yPoints[1], 128,128,128,100 );
-		lineRGBA( surface, *allLines[lineIterator].xPoints[0], *allLines[lineIterator].yPoints[0], *allLines[lineIterator].xPoints[2], *allLines[lineIterator].yPoints[2], 128,128,128,100 );
-		lineRGBA( surface, *allLines[lineIterator].xPoints[0], *allLines[lineIterator].yPoints[0], *allLines[lineIterator].xPoints[3], *allLines[lineIterator].yPoints[3], 128,128,128,100 );
-		lineRGBA( surface, *allLines[lineIterator].xPoints[1], *allLines[lineIterator].yPoints[1], *allLines[lineIterator].xPoints[2], *allLines[lineIterator].yPoints[2], 128,128,128,100 );
-		lineRGBA( surface, *allLines[lineIterator].xPoints[1], *allLines[lineIterator].yPoints[1], *allLines[lineIterator].xPoints[3], *allLines[lineIterator].yPoints[3], 128,128,128,100 );
-		lineRGBA( surface, *allLines[lineIterator].xPoints[2], *allLines[lineIterator].yPoints[2], *allLines[lineIterator].xPoints[3], *allLines[lineIterator].yPoints[3], 128,128,128,100 );
+		// lineRGBA( surface, *allLines[lineIterator].xPoints[0], *allLines[lineIterator].yPoints[0], *allLines[lineIterator].xPoints[1], *allLines[lineIterator].yPoints[1], 128,128,128,100 );
+		// lineRGBA( surface, *allLines[lineIterator].xPoints[0], *allLines[lineIterator].yPoints[0], *allLines[lineIterator].xPoints[2], *allLines[lineIterator].yPoints[2], 128,128,128,100 );
+		// lineRGBA( surface, *allLines[lineIterator].xPoints[0], *allLines[lineIterator].yPoints[0], *allLines[lineIterator].xPoints[3], *allLines[lineIterator].yPoints[3], 128,128,128,100 );
+		// lineRGBA( surface, *allLines[lineIterator].xPoints[1], *allLines[lineIterator].yPoints[1], *allLines[lineIterator].xPoints[2], *allLines[lineIterator].yPoints[2], 128,128,128,100 );
+		// lineRGBA( surface, *allLines[lineIterator].xPoints[1], *allLines[lineIterator].yPoints[1], *allLines[lineIterator].xPoints[3], *allLines[lineIterator].yPoints[3], 128,128,128,100 );
+		// lineRGBA( surface, *allLines[lineIterator].xPoints[2], *allLines[lineIterator].yPoints[2], *allLines[lineIterator].xPoints[3], *allLines[lineIterator].yPoints[3], 128,128,128,100 );
+		lineColor( surface, *allLines[lineIterator].xPoints[0], *allLines[lineIterator].yPoints[0], *allLines[lineIterator].xPoints[1], *allLines[lineIterator].yPoints[1], grayedColor );
+		lineColor( surface, *allLines[lineIterator].xPoints[0], *allLines[lineIterator].yPoints[0], *allLines[lineIterator].xPoints[2], *allLines[lineIterator].yPoints[2], grayedColor );
+		lineColor( surface, *allLines[lineIterator].xPoints[0], *allLines[lineIterator].yPoints[0], *allLines[lineIterator].xPoints[3], *allLines[lineIterator].yPoints[3], grayedColor );
+		lineColor( surface, *allLines[lineIterator].xPoints[1], *allLines[lineIterator].yPoints[1], *allLines[lineIterator].xPoints[2], *allLines[lineIterator].yPoints[2], grayedColor );
+		lineColor( surface, *allLines[lineIterator].xPoints[1], *allLines[lineIterator].yPoints[1], *allLines[lineIterator].xPoints[3], *allLines[lineIterator].yPoints[3], grayedColor );
+		lineColor( surface, *allLines[lineIterator].xPoints[2], *allLines[lineIterator].yPoints[2], *allLines[lineIterator].xPoints[3], *allLines[lineIterator].yPoints[3], grayedColor );
 
 		/* Draw Bezier curve for current line */
 		xOld = *allLines[lineIterator].xPoints[0];
@@ -507,13 +656,13 @@ void Bezier::drawLines(Uint32 color, bool redraw)
 			yOld = yNew;
 		}
 		if( active )	// dragging a point - highlight that point
-			circleRGBA( surface, *allLines[activeLine].xPoints[allLines[activeLine].activePoint], *allLines[activeLine].yPoints[allLines[activeLine].activePoint], 5, 255,0,255,255 );
+			circleColor( surface, *allLines[activeLine].xPoints[allLines[activeLine].activePoint], *allLines[activeLine].yPoints[allLines[activeLine].activePoint], circleRadius, highlightColor );
 	}
-	if( redraw )
-	{
-		SDL_UnlockSurface( surface );
-		SDL_Flip( surface );
-	}
+    if( doLockSurface )
+    {
+        SDL_UnlockSurface( surface );
+        SDL_Flip( surface );
+    }
 }
 /* TODO: Implement recursive subdivision to smooth out line sufficiently (or do a hack job and increase the number of points plotted) */
 void Bezier::drawLine(bLine bl)
@@ -521,7 +670,8 @@ void Bezier::drawLine(bLine bl)
 	int xNew, yNew, xOld, yOld;
 	double step = 1.0/curvePoints;
 
-	SDL_LockSurface( surface );
+	if( doLockSurface )
+		SDL_LockSurface( surface );
 	// SDL_FillRect( surface, NULL, 0 );	// clear surface to black
 	for( int lineIterator = 0; lineIterator < allLines.size(); lineIterator++ )
 	{
@@ -529,16 +679,15 @@ void Bezier::drawLine(bLine bl)
 		for( int i = 0; i < 4; i++ )
 		{
 			/* Draw control point circles */
-			// circleRGBA( surface, *bl.xPoints[i], *bl.yPoints[i], 5, 255,255,lineIterator,255 );
-			circleColor( surface, *bl.xPoints[i], *bl.yPoints[i], 5, 0xFFFFFF3F );
+			circleColor( surface, *bl.xPoints[i], *bl.yPoints[i], circleRadius, 0xFFFFFF3F );
 		}
 
-		lineRGBA( surface, *bl.xPoints[0], *bl.yPoints[0], *bl.xPoints[1], *bl.yPoints[1], 128,128,128,100 );
-		lineRGBA( surface, *bl.xPoints[0], *bl.yPoints[0], *bl.xPoints[2], *bl.yPoints[2], 128,128,128,100 );
-		lineRGBA( surface, *bl.xPoints[0], *bl.yPoints[0], *bl.xPoints[3], *bl.yPoints[3], 128,128,128,100 );
-		lineRGBA( surface, *bl.xPoints[1], *bl.yPoints[1], *bl.xPoints[2], *bl.yPoints[2], 128,128,128,100 );
-		lineRGBA( surface, *bl.xPoints[1], *bl.yPoints[1], *bl.xPoints[3], *bl.yPoints[3], 128,128,128,100 );
-		lineRGBA( surface, *bl.xPoints[2], *bl.yPoints[2], *bl.xPoints[3], *bl.yPoints[3], 128,128,128,100 );
+		lineColor( surface, *bl.xPoints[0], *bl.yPoints[0], *bl.xPoints[1], *bl.yPoints[1], grayedColor );
+		lineColor( surface, *bl.xPoints[0], *bl.yPoints[0], *bl.xPoints[2], *bl.yPoints[2], grayedColor );
+		lineColor( surface, *bl.xPoints[0], *bl.yPoints[0], *bl.xPoints[3], *bl.yPoints[3], grayedColor );
+		lineColor( surface, *bl.xPoints[1], *bl.yPoints[1], *bl.xPoints[2], *bl.yPoints[2], grayedColor );
+		lineColor( surface, *bl.xPoints[1], *bl.yPoints[1], *bl.xPoints[3], *bl.yPoints[3], grayedColor );
+		lineColor( surface, *bl.xPoints[2], *bl.yPoints[2], *bl.xPoints[3], *bl.yPoints[3], grayedColor );
 
 		/* Draw Bezier curve for current line */
 		xOld = *bl.xPoints[0];
@@ -550,7 +699,7 @@ void Bezier::drawLine(bLine bl)
 
 			// circleRGBA( surface, xNew, yNew, 5, r,g,b,a/3 );
 			// lineColor( surface, xNew, yNew, xOld, yOld, 0xFFFFFFFF );
-			lineRGBA( surface, xNew, yNew, xOld, yOld, 255,255,255,255 );
+			lineColor( surface, xNew, yNew, xOld, yOld, defaultColor );
 			// circleRGBA( surface, xNew, yNew, 3, 255,255,255,255 );
 
 			xOld = xNew;
@@ -558,8 +707,11 @@ void Bezier::drawLine(bLine bl)
 		}
 
 	}
-	SDL_UnlockSurface( surface );
-	SDL_Flip( surface );
+	if( doLockSurface )
+	{
+		SDL_UnlockSurface( surface );
+		SDL_Flip( surface );
+	}
 }
 inline double Bezier::dist(int x0, int y0, int x1, int y1)
 {
@@ -568,6 +720,14 @@ inline double Bezier::dist(int x0, int y0, int x1, int y1)
 inline double Bezier::distLine(int x, int y, int lineIndex, int pointIndex)
 {
 	return sqrt( (x-*allLines[lineIndex].xPoints[pointIndex])*(x-*allLines[lineIndex].xPoints[pointIndex]) + (y-*allLines[lineIndex].yPoints[pointIndex])*(y-*allLines[lineIndex].yPoints[pointIndex]) );
+}
+/* Lock the surface before calling this function */
+inline void Bezier::drawCircles(bLine &bl, Uint32 color)
+{
+	for( int i = 0; i < 4; i++ )
+	{
+		circleColor( surface, *bl.xPoints[i], *bl.yPoints[i], circleRadius, color );
+	}
 }
 /*
 Using de Casteljau's algorithm

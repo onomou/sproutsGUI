@@ -71,6 +71,7 @@ int main( int argc, char* argv[] )
 					{
 						curves.splitLine();
 						curves.drawLines();
+						// curves.activateLine2();	// do this once it has been worked on
 					}
 					break;
 				case SDL_MOUSEBUTTONDOWN:	// mouse pressed
@@ -155,6 +156,7 @@ int main( int argc, char* argv[] )
 					}
 					else
 					{
+						// curves.drawLines();
 						curves.highlightNear( event.motion.x, event.motion.y );
 					}
 					break;
