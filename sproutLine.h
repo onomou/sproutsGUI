@@ -13,6 +13,7 @@ class Sprout
 		static const Uint32 highlightColor = 0xFF00FFFF;	//
 		static const int spotRadius = 5;
 		static const int selectRadius = 15;
+		static const int thickness = 1;		// thickness for drawing lines and points
 		// static const int curvePoints = 30;
 
 		/* Structures and other storage stuff */
@@ -40,9 +41,12 @@ class Sprout
 		bool highlighted;
 
 		/* Private functions */
+		void thickLine(SDL_Surface*,int,int,int,int,Uint32);
+		
+		
 		  void connect(int,int,int,int);	// (by index) connect first spot to second spot through (x,y)
 		  void drawSpots(void);
-		  void drawControls(connection*);
+		  void drawConnection(connection*);
 		  bool select(int,int);			// set spot active it near x,y
 		double dist(int,int,int,int);	// return distance between (x0,y0) and (x1,y1)
 		   int dist2(int,int,int,int);	// return square of distance between (x0,y0) and (x1,y1)
@@ -72,6 +76,16 @@ Sprout::Sprout(SDL_Surface *sf, int numSprouts)
 	}
 	drawSpots();
 	/* End spots setup */
+}
+void Sprout::thickLine(SDL_Surface *sf, int x0, int y0, int x, int y, Uint32 color)
+{
+	for( int i = -thickness; i <= thickness; i++ )
+	{
+		for( int j = -thickness; j <= thickness; j++ )
+		{
+			lineColor( sf, x0+i, y0+j, x+i, y+j, color );
+		}
+	}
 }
 bool Sprout::connect(void)
 {
@@ -137,7 +151,7 @@ bool Sprout::connect(void)
 									tmpInt = new int;
 									*tmpInt = event.button.y;
 									tmpConnection->yPoints.push_back( tmpInt );
-									drawControls( tmpConnection );
+									drawConnection( tmpConnection );
 								}
 							}
 						}
@@ -157,6 +171,7 @@ bool Sprout::connect(void)
 						if( index > 0 )
 						{
 							drawLines();
+							drawConnection( tmpConnection );
 							lineValid( *tmpConnection->xPoints.back(), *tmpConnection->yPoints.back(), event.motion.x, event.motion.y );
 							circleColor( surface, event.motion.x, event.motion.y, selectRadius, grayedColor );
 						}
@@ -234,7 +249,8 @@ void Sprout::drawLines(void)
 		// iterate through each pair of control points defining the line
 		for( int i = 1; i < lines[it]->xPoints.size(); i++ )	// what happens if there is only one xPoint?
 		{
-			lineColor( surface, *lines[it]->xPoints[i], *lines[it]->yPoints[i], *lines[it]->xPoints[i-1], *lines[it]->yPoints[i-1], defaultColor );
+			// lineColor( surface, *lines[it]->xPoints[i], *lines[it]->yPoints[i], *lines[it]->xPoints[i-1], *lines[it]->yPoints[i-1], defaultColor );
+			thickLine( surface, *lines[it]->xPoints[i], *lines[it]->yPoints[i], *lines[it]->xPoints[i-1], *lines[it]->yPoints[i-1], defaultColor );
 		}
 	}
     drawSpots();
@@ -244,13 +260,20 @@ void Sprout::drawLines(void)
         SDL_Flip( surface );
     }
 }
-void Sprout::drawControls(connection *tmpConnection)
+void Sprout::drawConnection(connection *tmpConnection)
 {
+	if( doLockSurface )
+        SDL_LockSurface( surface );
 	for( int i = 1; i < tmpConnection->xPoints.size(); i++ )	// what happens if there is only one xPoint?
 	{
-		lineColor( surface, *tmpConnection->xPoints[i], *tmpConnection->yPoints[i], *tmpConnection->xPoints[i-1], *tmpConnection->yPoints[i-1], grayedColor );
-		circleColor( surface, *tmpConnection->xPoints[i-1], *tmpConnection->yPoints[i-1], spotRadius/2, grayedColor );
+		// circleColor( surface, *tmpConnection->xPoints[i-1], *tmpConnection->yPoints[i-1], spotRadius/2, grayedColor );
+		thickLine( surface, *tmpConnection->xPoints[i], *tmpConnection->yPoints[i], *tmpConnection->xPoints[i-1], *tmpConnection->yPoints[i-1], defaultColor );
 	}
+	if( doLockSurface )
+    {
+        SDL_UnlockSurface( surface );
+        SDL_Flip( surface );
+    }
 }
 // WARNING! only call this function if the line from index to x,y has not been drawn (only call this once per drawLines() call)
 // lock the screen, blank the screen, draw the other lines, then call this function twice (for two lines), then unlock and flip the screen
@@ -259,6 +282,7 @@ bool Sprout::lineValid(int x0, int y0, int x, int y)
 	double step;
 	bool clear = true;
 	int xNew, yNew, xOld, yOld;
+	std::vector<int> xCollisions, yCollisions;
 	/* Draw line */
 	xOld = x;
 	yOld = y;
@@ -276,19 +300,36 @@ bool Sprout::lineValid(int x0, int y0, int x, int y)
 			{
 				if( dist2( xNew, yNew, x0, y0 ) > selectRadius*selectRadius  )
 				{
-					circleColor( surface, xNew, yNew, 5, highlightColor );
+					xCollisions.push_back( xNew );
+					yCollisions.push_back( yNew );
+					// circleColor( surface, xNew, yNew, 5, highlightColor );
 					clear = false;
 				}
 			}
 		}
-		else
-			pixelColor( surface, xNew, yNew, defaultColor );
 			
 		xOld = xNew;
 		yOld = yNew;
 	}
-	if( !clear )
-		circleColor( surface, 10,10,10,grayedColor);
+	// now draw the line
+	for( double t = 0+step; t <= 1; t += step )
+	{
+		xNew = x0 * t + x * ( 1 - t );		// xNew = spots[index]->xPoint * t + x * ( 1 - t );
+		yNew = y0 * t + y * ( 1 - t );		// yNew = spots[index]->yPoint * t + y * ( 1 - t );
+		{
+			for( int i = -thickness; i <= thickness; i++ )
+			{
+				for( int j = -thickness; j <= thickness; j++ )
+				{
+					pixelColor(  surface, xNew+i, yNew+j, defaultColor );
+				}
+			}
+		}
+	}
+	for( int it = 0; it < xCollisions.size(); it++ )
+	{
+		filledCircleColor( surface, xCollisions[it], yCollisions[it], 5, highlightColor );
+	}
 	return clear;
 }
 bool Sprout::select(int x, int y)

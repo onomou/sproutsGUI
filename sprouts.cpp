@@ -67,6 +67,7 @@ int main( int argc, char* argv[] )
 					{
 						sp.connect();
 						sp.drawLines();
+						std::cout << "Done.";
 					}
 					break;
 				case SDL_MOUSEMOTION:		// mouse moved
