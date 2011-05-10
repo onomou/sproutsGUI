@@ -1,4 +1,3 @@
-#include <ctime>
 #include <SDL/SDL.h>
 #include <SDL/SDL_gfxPrimitives.h>
 
@@ -38,7 +37,7 @@ int main( int argc, char* argv[] )
 
 	SDL_Surface *gameOver;
 	gameOver = SDL_LoadBMP("gameOver.bmp");
-	
+
 	rect = new SDL_Rect;
 	rect->x = screen->w/2 - gameOver->w/2;
 	rect->y = screen->h/2 - gameOver->h/2;

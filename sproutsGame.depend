@@ -1,6 +1,5 @@
 # depslib dependency file v1.0
-1276034082 source:d:\code\sproutsgui\sprouts.cpp
-	<ctime>
+1276035991 source:d:\code\sproutsgui\sprouts.cpp
 	<SDL/SDL.h>
 	<SDL/SDL_gfxPrimitives.h>
 	"sproutLine.h"
@@ -206,7 +205,13 @@
 	"xorRNG.h"
 	<iostream>
 
-1276034651 d:\code\sproutsgui\sproutline.h
+1277428146 d:\code\sproutsgui\sproutline.h
 	<vector>
 	"draw.h"
+	"bezierDraw.h"
+
+1285285416 d:\code\sproutsgui\bezierdraw.h
+	<algorithm>
+	<vector>
+	<cmath>
 

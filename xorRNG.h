@@ -17,3 +17,5 @@ inline int random( int n )
 	// return XORshiftRNG() % n;	// use this once XOR-Shift RNG has a random start seed
 	return rand() % n;
 }
+
+

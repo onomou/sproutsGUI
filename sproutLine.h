@@ -1,5 +1,6 @@
 #include <vector>
 #include "draw.h"
+#include "bezierDraw.h"
 
 class Sprout
 {
